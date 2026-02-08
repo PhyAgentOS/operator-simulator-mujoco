@@ -1,0 +1,24 @@
+# MuJoCo 节点配置示例
+# 复制为 config.yaml 并根据实际环境修改
+
+model_path: ./model.xml
+
+joint_order: ["j1", "j2", "j3"]
+
+robots:
+  - id: robot_0
+    actuator_order: ["act1", "act2"]
+    joint_to_actuator:
+      j1: act1
+      j2: act2
+  - id: robot_1
+    actuator_order: ["act1"]
+    joint_to_actuator:
+      j3: act1
+
+# 相机输出配置：MuJoCo 模型中的 camera 名称 -> output_id 或 { output, hz }
+# 无 hz 时随 tick 输出。camera 名称需与模型 XML 中 camera 的 name 属性一致
+image_forward:
+  camera/main: { output: "image/main", hz: 30 }
+  camera/wrist: { output: "image/wrist", hz: 15 }
+  camera/depth: "image/depth"

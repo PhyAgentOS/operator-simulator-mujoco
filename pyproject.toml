@@ -5,8 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "dora-rs>=0.4.1",
     "forge-msgs",
+    "forge-simulators-mujoco",
+    "mujoco",
+    "pyyaml>=6.0",
 ]
 
 [tool.uv.sources]
 forge-msgs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", subdirectory = "packages/msgs", rev = "dev" }
+forge-simulators-mujoco = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", subdirectory = "packages/simulators/mujoco", rev = "dev" }
