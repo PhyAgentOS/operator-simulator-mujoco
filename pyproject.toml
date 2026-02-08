@@ -1,7 +1,12 @@
 [project]
-name = "mujoco"
+name = "forge-runtime-simulators-mujoco"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "forge-msgs",
+]
+
+[tool.uv.sources]
+forge-msgs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", subdirectory = "packages/msgs", rev = "dev" }
