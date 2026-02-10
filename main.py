@@ -111,7 +111,7 @@ def main() -> int:
                         robot_states: dict[str, object] = {}
                         for robot in config.robots:
                             sim = simulators[robot.id]
-                            sim_state = sim.get_state(timestamp=time.time())
+                            sim_state = sim.get_state()
                             robot_states[robot.id] = sim_state_to_robot_state(
                                 sim_state, robot
                             )

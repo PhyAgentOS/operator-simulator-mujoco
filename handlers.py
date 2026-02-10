@@ -26,10 +26,7 @@ def build_robot_action(action: Action, robot: RobotConfig) -> RobotAction:
                 unit="radians",
             )
 
-    return RobotAction(
-        timestamp=action.ref_timestamp,
-        actuators=actuators,
-    )
+    return RobotAction(actuators=actuators)
 
 
 def build_proprio_state(
@@ -38,7 +35,6 @@ def build_proprio_state(
 ) -> ProprioState:
     """将各机器人的 RobotState 聚合为 ProprioState。"""
     joints: dict[str, JointValue] = {}
-    latest_timestamp = 0.0
 
     for robot in config.robots:
         state = robot_states.get(robot.id)
@@ -56,10 +52,7 @@ def build_proprio_state(
                     unit=av.unit,
                 )
 
-        if state.timestamp > latest_timestamp:
-            latest_timestamp = state.timestamp
-
-    return ProprioState(timestamp=latest_timestamp, joints=joints)
+    return ProprioState(joints=joints)
 
 
 def sim_state_to_robot_state(
@@ -78,4 +71,4 @@ def sim_state_to_robot_state(
         if joint_name is not None and joint_name in sim_state.actuators:
             actuators[actuator_name] = sim_state.actuators[joint_name]
 
-    return RobotState(timestamp=sim_state.timestamp, actuators=actuators)
+    return RobotState(actuators=actuators)
