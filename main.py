@@ -73,7 +73,7 @@ def main() -> int:
     simulators: dict[str, MuJoCoSimulator] = {}
     for robot in config.robots:
         joints, actuators = _build_joints_and_actuators(robot)
-        prefix = f"{robot.id}/" if len(config.robots) > 1 else ""
+        prefix = robot.prefix
         sim = MuJoCoSimulator(
             model=model,
             data=data,

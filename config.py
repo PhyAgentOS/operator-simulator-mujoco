@@ -17,6 +17,7 @@ class RobotConfig:
     id: str
     actuator_order: list[str]
     joint_to_actuator: dict[str, str]
+    prefix: str = ""  # MuJoCo 模型中的名称前缀，如 item_1/；多机时通常由 id 推导
 
     def __post_init__(self) -> None:
         if not self.actuator_order:
@@ -82,6 +83,7 @@ class MuJoCoNodeConfig:
                     id=r["id"],
                     actuator_order=r["actuator_order"],
                     joint_to_actuator=r.get("joint_to_actuator", {}),
+                    prefix=r.get("prefix", ""),
                 )
             )
 
