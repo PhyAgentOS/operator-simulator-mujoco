@@ -9,6 +9,8 @@ dependencies = [
     "forge-msgs",
     "forge-simulators-mujoco",
     "mujoco",
+    "numpy",
+    "opencv-python",
     "pyyaml>=6.0",
 ]
 

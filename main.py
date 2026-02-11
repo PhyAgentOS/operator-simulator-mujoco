@@ -9,12 +9,20 @@ import time
 from pathlib import Path
 
 import mujoco
+import numpy as np
 from dora import Node
-from forge_msgs import Action
+from forge_msgs import (
+    Action,
+    CompressedImage,
+    Image,
+)
 from forge_robots_core import BaseActuator, BaseJoint
 from forge_simulators_mujoco import MuJoCoSimulator
 
-from config import load_config
+from config import (
+    MuJoCoNodeConfig,
+    load_config,
+)
 from handlers import build_proprio_state, build_robot_action, sim_state_to_robot_state
 
 
@@ -54,6 +62,54 @@ def _create_renderer(model: mujoco.MjModel, height: int = 480, width: int = 640)
     return mujoco.Renderer(model, height, width)
 
 
+def _build_image_payload(
+    pixels: np.ndarray,
+    config: MuJoCoNodeConfig,
+    cv2_module: object | None,
+):
+    """根据配置将渲染图像编码为 raw Image 或 CompressedImage。"""
+    height, width = int(pixels.shape[0]), int(pixels.shape[1])
+    if config.image_format == "raw":
+        return Image(
+            width=width,
+            height=height,
+            channels=3,
+            encoding="rgb8",
+            data=pixels.tobytes(),
+        ).to_arrow()
+
+    if cv2_module is None:
+        raise RuntimeError("image_format 为 jpeg/png 时需要安装 opencv-python")
+
+    cv2 = cv2_module
+    # OpenCV 编码器默认按 BGR 解释 3 通道输入，这里将 RGB 转为 BGR 再压缩。
+    bgr = pixels[..., ::-1]
+    if config.image_format == "jpeg":
+        ok, encoded = cv2.imencode(
+            ".jpg",
+            bgr,
+            [int(cv2.IMWRITE_JPEG_QUALITY), int(config.image_jpeg_quality)],
+        )
+        if not ok:
+            raise RuntimeError("JPEG 编码失败")
+        return CompressedImage(
+            width=width,
+            height=height,
+            format="jpeg",
+            data=encoded.tobytes(),
+        ).to_arrow()
+
+    ok, encoded = cv2.imencode(".png", bgr)
+    if not ok:
+        raise RuntimeError("PNG 编码失败")
+    return CompressedImage(
+        width=width,
+        height=height,
+        format="png",
+        data=encoded.tobytes(),
+    ).to_arrow()
+
+
 def main() -> int:
     args = _parse_args()
     config = load_config(config_path=args.config)
@@ -90,6 +146,19 @@ def main() -> int:
             renderer = _create_renderer(model)
         except Exception as e:
             print(f"[mujoco] 创建渲染器失败，将跳过相机输出: {e}", file=sys.stderr)
+
+    cv2_module = None
+    if config.image_format in {"jpeg", "png"}:
+        try:
+            import cv2  # type: ignore
+
+            cv2_module = cv2
+        except Exception as e:
+            print(
+                f"[mujoco] image_format={config.image_format} 需要 opencv-python: {e}",
+                file=sys.stderr,
+            )
+            return 1
 
     # 相机节流：记录上次输出时间
     camera_last_time: dict[str, float] = {name: 0.0 for name in config.camera_names}
@@ -131,8 +200,10 @@ def main() -> int:
                                 try:
                                     renderer.update_scene(data, camera=cam_name)
                                     pixels = renderer.render()
-                                    # 输出为 RGB 图像 bytes (height, width, 3)
-                                    node.send_output(output_id, pixels.tobytes())
+                                    payload = _build_image_payload(
+                                        pixels, config, cv2_module
+                                    )
+                                    node.send_output(output_id, payload)
                                 except Exception as e:
                                     print(
                                         f"[mujoco] 渲染相机 {cam_name} 失败: {e}",

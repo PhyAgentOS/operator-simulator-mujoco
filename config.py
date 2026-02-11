@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
@@ -58,6 +58,8 @@ class MuJoCoNodeConfig:
     joint_order: list[str]
     robots: list[RobotConfig]
     image_forward: dict[str, CameraConfig] = field(default_factory=dict)
+    image_format: Literal["raw", "jpeg", "png"] = "raw"
+    image_jpeg_quality: int = 90
 
     @property
     def camera_names(self) -> set[str]:
@@ -95,11 +97,22 @@ class MuJoCoNodeConfig:
         for cam_name, val in image_forward_raw.items():
             image_forward[cam_name] = _parse_image_forward(val)
 
+        image_format = data.get("image_format", "raw")
+        if image_format not in {"raw", "jpeg", "png"}:
+            raise ValueError(
+                f"image_format 必须是 raw/jpeg/png 之一，当前: {image_format}"
+            )
+        image_jpeg_quality = int(data.get("image_jpeg_quality", 90))
+        if image_jpeg_quality < 1 or image_jpeg_quality > 100:
+            raise ValueError("image_jpeg_quality 必须在 [1, 100] 范围内")
+
         return cls(
             model_path=model_path,
             joint_order=joint_order,
             robots=robots,
             image_forward=image_forward,
+            image_format=image_format,
+            image_jpeg_quality=image_jpeg_quality,
         )
 
     @classmethod
