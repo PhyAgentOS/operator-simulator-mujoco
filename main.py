@@ -100,7 +100,6 @@ def main() -> int:
         match event["type"]:
             case "INPUT":
                 input_id = event["id"]
-                metadata = event.get("metadata", {})
 
                 match input_id:
                     case "tick":
@@ -116,11 +115,7 @@ def main() -> int:
                                 sim_state, robot
                             )
                         proprio_state = build_proprio_state(robot_states, config)
-                        node.send_output(
-                            "proprio_state",
-                            proprio_state.to_arrow(config.joint_order),
-                            metadata,
-                        )
+                        node.send_output("proprio_state", proprio_state.to_arrow(config.joint_order))
 
                         # 相机输出（按 hz 节流）
                         if renderer is not None:
@@ -137,7 +132,7 @@ def main() -> int:
                                     renderer.update_scene(data, camera=cam_name)
                                     pixels = renderer.render()
                                     # 输出为 RGB 图像 bytes (height, width, 3)
-                                    node.send_output(output_id, pixels.tobytes(), metadata)
+                                    node.send_output(output_id, pixels.tobytes())
                                 except Exception as e:
                                     print(
                                         f"[mujoco] 渲染相机 {cam_name} 失败: {e}",
