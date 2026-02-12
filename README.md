@@ -46,6 +46,14 @@ cd packages/nodes/simulators/mujoco
 uv run python main.py --config config.yaml
 ```
 
+## 渲染后端
+
+离屏渲染默认使用 **EGL**（不依赖 GLFW/显示器），适合无头环境、SSH、服务器。可通过环境变量覆盖：
+
+- `MUJOCO_GL=egl`（默认）：无头 GPU 渲染
+- `MUJOCO_GL=osmesa`：软件渲染（需安装 libOSMesa）
+- `MUJOCO_GL=glfw`：需要显示器/窗口时使用
+
 ## 依赖
 
 - `mujoco`：由本包直接依赖

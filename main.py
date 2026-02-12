@@ -4,9 +4,15 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
+
+# 渲染后端：须在 import mujoco 之前设置。默认 egl 便于无显示器/SSH/服务器；
+# 若需 GLFW 窗口可设 MUJOCO_GL=glfw；纯软件渲染可设 MUJOCO_GL=osmesa（需 libOSMesa）。
+if "MUJOCO_GL" not in os.environ:
+    os.environ["MUJOCO_GL"] = "egl"
 
 import mujoco
 import numpy as np

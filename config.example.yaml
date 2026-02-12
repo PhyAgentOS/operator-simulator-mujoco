@@ -1,5 +1,10 @@
 # MuJoCo 节点配置示例
 # 复制为 config.yaml 并根据实际环境修改
+#
+# 渲染后端（环境变量，须在启动前设置）：默认 egl（无显示器/服务器友好）
+#   MUJOCO_GL=egl   - 无头 GPU 渲染（推荐）
+#   MUJOCO_GL=osmesa - 软件渲染（无 GPU，需 libOSMesa）
+#   MUJOCO_GL=glfw  - 需要显示器/窗口
 
 model_path: ./model.xml
 
