@@ -18,7 +18,7 @@ robots:
 
 # 相机输出配置：MuJoCo 模型中的 camera 名称 -> output_id 或 { output, hz }
 # 无 hz 时随 tick 输出。camera 名称需与模型 XML 中 camera 的 name 属性一致
-# image_format: raw（默认）直接输出 forge_msgs.Image；jpeg/png 输出 forge_msgs.CompressedImage
+# image_format: raw（默认）或 jpeg/png，均输出 forge_msgs.Image（压缩时 encoding 为 jpeg/png）
 # image_jpeg_quality: JPEG 质量（1-100，仅 image_format=jpeg 时生效）
 image_format: raw
 image_jpeg_quality: 90

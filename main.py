@@ -11,11 +11,7 @@ from pathlib import Path
 import mujoco
 import numpy as np
 from dora import Node
-from forge_msgs import (
-    Action,
-    CompressedImage,
-    Image,
-)
+from forge_msgs import Action, Image
 from forge_robots_core import BaseActuator, BaseJoint
 from forge_simulators_mujoco import MuJoCoSimulator
 
@@ -24,6 +20,28 @@ from config import (
     load_config,
 )
 from handlers import build_proprio_state, build_robot_action, sim_state_to_robot_state
+
+
+def _patch_mujoco_renderer_close() -> None:
+    """Renderer.__init__ 在 make_current() 失败时不会设置 _mjr_context，析构时 close() 会 AttributeError。"""
+    def _safe_close(self) -> None:
+        try:
+            if getattr(self, "_gl_context", None):
+                self._gl_context.free()
+            if getattr(self, "_mjr_context", None):
+                self._mjr_context.free()
+        except Exception:
+            pass
+        try:
+            object.__setattr__(self, "_gl_context", None)
+            object.__setattr__(self, "_mjr_context", None)
+        except Exception:
+            pass
+
+    mujoco.Renderer.close = _safe_close
+
+
+_patch_mujoco_renderer_close()
 
 
 def _parse_args() -> argparse.Namespace:
@@ -67,7 +85,7 @@ def _build_image_payload(
     config: MuJoCoNodeConfig,
     cv2_module: object | None,
 ):
-    """根据配置将渲染图像编码为 raw Image 或 CompressedImage。"""
+    """根据配置将渲染图像编码为 Image（raw 或 jpeg/png 压缩）。"""
     height, width = int(pixels.shape[0]), int(pixels.shape[1])
     if config.image_format == "raw":
         return Image(
@@ -92,20 +110,22 @@ def _build_image_payload(
         )
         if not ok:
             raise RuntimeError("JPEG 编码失败")
-        return CompressedImage(
+        return Image(
             width=width,
             height=height,
-            format="jpeg",
+            channels=0,
+            encoding="jpeg",
             data=encoded.tobytes(),
         ).to_arrow()
 
     ok, encoded = cv2.imencode(".png", bgr)
     if not ok:
         raise RuntimeError("PNG 编码失败")
-    return CompressedImage(
+    return Image(
         width=width,
         height=height,
-        format="png",
+        channels=0,
+        encoding="png",
         data=encoded.tobytes(),
     ).to_arrow()
 
