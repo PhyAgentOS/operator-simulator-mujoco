@@ -168,8 +168,15 @@ def main() -> int:
     # 相机渲染器（如有配置）
     renderer = None
     if config.image_forward:
+        # 如果有相机配置了宽高，则统一使用第一组非空宽高；否则使用默认 480x640
+        render_height, render_width = 480, 640
+        for cam_cfg in config.image_forward.values():
+            if cam_cfg.width is not None and cam_cfg.height is not None:
+                render_width = int(cam_cfg.width)
+                render_height = int(cam_cfg.height)
+                break
         try:
-            renderer = _create_renderer(model)
+            renderer = _create_renderer(model, height=render_height, width=render_width)
         except Exception as e:
             print(f"[mujoco] 创建渲染器失败，将跳过相机输出: {e}", file=sys.stderr)
 

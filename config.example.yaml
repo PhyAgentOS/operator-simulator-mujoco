@@ -29,6 +29,6 @@ image_format: raw
 image_jpeg_quality: 90
 
 image_forward:
-  camera/main: { output: "image/main", hz: 30 }
-  camera/wrist: { output: "image/wrist", hz: 15 }
-  camera/depth: "image/depth"
+  camera/main: { output: "image/main", hz: 30, width: 640, height: 480 }
+  camera/wrist: { output: "image/wrist", hz: 15, width: 640, height: 480 }
+  camera/depth: { output: "image/depth", width: 640, height: 480 }

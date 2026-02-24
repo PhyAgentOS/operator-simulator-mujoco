@@ -36,6 +36,8 @@ class CameraConfig:
 
     output_id: str
     hz: float | None = None  # None 表示随 tick 输出
+    width: int | None = None
+    height: int | None = None
 
 
 def _parse_image_forward(value: Any) -> CameraConfig:
@@ -46,6 +48,8 @@ def _parse_image_forward(value: Any) -> CameraConfig:
         return CameraConfig(
             output_id=value.get("output", value.get("output_id", "")),
             hz=value.get("hz"),
+            width=value.get("width"),
+            height=value.get("height"),
         )
     raise ValueError(f"image_forward 条目格式无效: {value}")
 
