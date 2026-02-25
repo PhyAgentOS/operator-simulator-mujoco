@@ -27,6 +27,10 @@ from config import (
 )
 from handlers import build_proprio_state, build_robot_action, sim_state_to_robot_state
 
+from forge_common import get_logger
+
+logger = get_logger(__name__)
+
 
 def _patch_mujoco_renderer_close() -> None:
     """Renderer.__init__ 在 make_current() 失败时不会设置 _mjr_context，析构时 close() 会 AttributeError。"""
@@ -61,23 +65,49 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _build_joints_and_actuators(robot_config) -> tuple[list[BaseJoint], list[BaseActuator]]:
-    """从 RobotConfig 构建 BaseJoint 和 BaseActuator 列表。"""
-    joints = [
-        BaseJoint(name=name, mode="position")
-        for name in robot_config.joint_to_actuator.keys()
-    ]
-    actuators = [
-        BaseActuator(
-            name=name,
-            id=i,
-            control_mode="position",
-            min_value=-3.14,
-            max_value=3.14,
-            unit="radians",
+def _actuator_limits(unit: str) -> tuple[float, float]:
+    """按单位返回合理的 min/max（用于限位裁剪）。"""
+    if unit in ("millimeters", "millimeters/s"):
+        return 0.0, 50.0
+    if unit in ("meters", "meters/s"):
+        return 0.0, 0.05
+    # radians 等
+    return -3.14, 3.14
+
+
+def _build_joints_and_actuators(
+    node_config: MuJoCoNodeConfig,
+    robot_config,
+) -> tuple[list[BaseJoint], list[BaseActuator]]:
+    """从节点配置的 JointConfig 与 RobotConfig 构建 BaseJoint 和 BaseActuator 列表。"""
+    joint_specs = {j.name: j for j in node_config.joints}
+    actuator_to_joint = {
+        act: joint for joint, act in robot_config.joint_to_actuator.items()
+    }
+
+    joints = []
+    for name in robot_config.joint_to_actuator.keys():
+        spec = joint_specs.get(name)
+        mode = spec.mode if spec else "position"
+        joints.append(BaseJoint(name=name, mode=mode))
+
+    actuators = []
+    for i, actuator_name in enumerate(robot_config.actuator_order):
+        joint_name = actuator_to_joint.get(actuator_name)
+        spec = joint_specs.get(joint_name) if joint_name else None
+        unit = spec.unit if spec else "radians"
+        mode = spec.mode if spec else "position"
+        min_val, max_val = _actuator_limits(unit)
+        actuators.append(
+            BaseActuator(
+                name=actuator_name,
+                id=i,
+                control_mode=mode,
+                min_value=min_val,
+                max_value=max_val,
+                unit=unit,
+            )
         )
-        for i, name in enumerate(robot_config.actuator_order)
-    ]
     return joints, actuators
 
 
@@ -154,7 +184,7 @@ def main() -> int:
     # 为每个 robot 创建 MuJoCoSimulator
     simulators: dict[str, MuJoCoSimulator] = {}
     for robot in config.robots:
-        joints, actuators = _build_joints_and_actuators(robot)
+        joints, actuators = _build_joints_and_actuators(config, robot)
         prefix = robot.prefix
         sim = MuJoCoSimulator(
             model=model,

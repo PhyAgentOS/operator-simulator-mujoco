@@ -8,6 +8,7 @@ dependencies = [
     "dora-rs>=0.4.1",
     "forge-msgs",
     "forge-simulators-mujoco",
+    "forge-configs",
     "mujoco",
     "numpy",
     "opencv-python",
@@ -17,3 +18,4 @@ dependencies = [
 [tool.uv.sources]
 forge-msgs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", subdirectory = "packages/msgs", rev = "dev" }
 forge-simulators-mujoco = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", subdirectory = "packages/simulators/mujoco", rev = "dev" }
+forge-configs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", rev = "dev", subdirectory = "packages/configs" }

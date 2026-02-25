@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from forge_configs.robot import JointConfig
 import yaml
 
 
@@ -59,7 +60,7 @@ class MuJoCoNodeConfig:
     """MuJoCo 节点完整配置。"""
 
     model_path: str
-    joint_order: list[str]
+    joints: list[JointConfig]
     robots: list[RobotConfig]
     image_forward: dict[str, CameraConfig] = field(default_factory=dict)
     image_format: Literal["raw", "jpeg", "png"] = "raw"
@@ -70,6 +71,11 @@ class MuJoCoNodeConfig:
         """需输出的相机名称集合。"""
         return set(self.image_forward.keys())
 
+    @property
+    def joint_order(self) -> list[str]:
+        """关节名称顺序，用于 Action/ProprioState 序列化。"""
+        return [j.name for j in self.joints]
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MuJoCoNodeConfig":
         """从字典解析配置。"""
@@ -77,9 +83,10 @@ class MuJoCoNodeConfig:
         if not model_path:
             raise ValueError("model_path 不能为空")
 
-        joint_order = data.get("joint_order", [])
-        if not joint_order:
-            raise ValueError("joint_order 不能为空")
+        joints_raw = data.get("joints", [])
+        if not joints_raw:
+            raise ValueError("配置需包含 joints（每项含 name、可选 mode/unit）")
+        joints = [JointConfig(**j) for j in joints_raw]
 
         robots_raw = data.get("robots", [])
         robots: list[RobotConfig] = []
@@ -112,7 +119,7 @@ class MuJoCoNodeConfig:
 
         return cls(
             model_path=model_path,
-            joint_order=joint_order,
+            joints=joints,
             robots=robots,
             image_forward=image_forward,
             image_format=image_format,
