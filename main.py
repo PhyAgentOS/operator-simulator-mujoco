@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -30,6 +31,16 @@ from handlers import build_proprio_state, build_robot_action, sim_state_to_robot
 from forge_common import get_logger
 
 logger = get_logger(__name__)
+
+
+SIM_STATUS_CODE = {
+    "UNINITIALIZED": 0,
+    "INITIALIZED": 1,
+    "RUNNING": 2,
+    "PAUSED": 3,
+    "STOPPED": 4,
+    "RESETTING": 5,
+}
 
 
 def _patch_mujoco_renderer_close() -> None:
@@ -228,15 +239,69 @@ def main() -> int:
 
     node = Node()
 
+    # 仿真状态机：默认沿用现有行为直接 RUNNING，便于不接 sim_control 时保持兼容
+    sim_mode = "RUNNING"
+    current_step = 0
+    episode_index = 0
+
     for event in node:
         match event["type"]:
             case "INPUT":
                 input_id = event["id"]
 
                 match input_id:
+                    case "sim_control":
+                        # 解析来自 control_gateway 的控制指令
+                        action: str | None = None
+                        try:
+                            raw = event.get("value")
+                            payload = json.loads(bytes(raw).decode("utf-8")) if raw is not None else {}
+                            if isinstance(payload, dict):
+                                action = payload.get("action")
+                        except Exception:
+                            action = None
+
+                        if action == "START":
+                            if sim_mode in ("UNINITIALIZED", "STOPPED"):
+                                current_step = 0
+                                episode_index += 1
+                            sim_mode = "RUNNING"
+                        elif action == "PAUSE" and sim_mode == "RUNNING":
+                            sim_mode = "PAUSED"
+                        elif action == "RESUME" and sim_mode == "PAUSED":
+                            sim_mode = "RUNNING"
+                        elif action == "RESET":
+                            current_step = 0
+                            episode_index += 1
+                            sim_mode = "RUNNING"
+                        elif action == "STOP":
+                            sim_mode = "STOPPED"
+
+                        status = {
+                            "status_name": sim_mode,
+                            "status_code": SIM_STATUS_CODE.get(sim_mode, -1),
+                            "current_step": current_step,
+                            "episode_index": episode_index,
+                        }
+                        node.send_output("sim_status", json.dumps(status).encode("utf-8"))
+
                     case "tick":
+                        if sim_mode != "RUNNING":
+                            # 完全暂停：不步进、不更新图像，只更新 running_time 由上层按需处理
+                            status = {
+                                "status_name": sim_mode,
+                                "status_code": SIM_STATUS_CODE.get(sim_mode, -1),
+                                "current_step": current_step,
+                                "episode_index": episode_index,
+                            }
+                            node.send_output(
+                                "sim_status", json.dumps(status).encode("utf-8")
+                            )
+                            continue
+
                         # 仿真步进
                         mujoco.mj_step(model, data)
+                        current_step += 1
 
                         # 读取状态并输出 ProprioState
                         robot_states: dict[str, object] = {}
@@ -247,7 +312,9 @@ def main() -> int:
                                 sim_state, robot
                             )
                         proprio_state = build_proprio_state(robot_states, config)
-                        node.send_output("proprio_state", proprio_state.to_arrow(config.joint_order))
+                        node.send_output(
+                            "proprio_state", proprio_state.to_arrow(config.joint_order)
+                        )
 
                         # 相机输出（按 hz 节流）
                         if renderer is not None:
@@ -272,6 +339,14 @@ def main() -> int:
                                         f"[mujoco] 渲染相机 {cam_name} 失败: {e}",
                                         file=sys.stderr,
                                     )
+
+                        status = {
+                            "status_name": sim_mode,
+                            "status_code": SIM_STATUS_CODE.get(sim_mode, -1),
+                            "current_step": current_step,
+                            "episode_index": episode_index,
+                        }
+                        node.send_output("sim_status", json.dumps(status).encode("utf-8"))
 
                     case "action":
                         action = Action.from_arrow(event["value"], config.joint_order)

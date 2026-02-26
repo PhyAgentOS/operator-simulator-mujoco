@@ -16,11 +16,13 @@
 |------|------|
 | `tick` | 定时器驱动，触发仿真步进、ProprioState 与相机输出 |
 | `action` | forge-msg.Action，按 joint 配置转为 ctrl |
+| `sim_control` | （可选）来自 `control_gateway` 的仿真控制指令 JSON，形如 `{ "action": "PAUSE" }` |
 
 | 输出 | 说明 |
 |------|------|
 | `proprio_state` | forge-msg.ProprioState |
 | `image/*` | 相机图像（按 image_forward 配置） |
+| `sim_status` | 当前仿真状态 JSON，供 `control_gateway` / 前端查询 |
 
 ## 运行
 
@@ -45,6 +47,36 @@
 cd packages/nodes/simulators/mujoco
 uv run python main.py --config config.yaml
 ```
+
+## 状态机（sim_control / sim_status）
+
+当 dataflow 中接入 `control_gateway` 时，`mujoco` 内部维护一个简单状态机，并通过 `sim_status` 对外暴露：
+
+- **状态枚举**（实现中主要使用以下子集）：
+  - `UNINITIALIZED`：尚未加载/初始化场景（预留，不一定在所有场景下显式使用）。
+  - `INITIALIZED`：已初始化场景但尚未开始运行（预留）。
+  - `RUNNING`：正常按 `tick` 步进仿真、输出状态与图像。
+  - `PAUSED`：暂停；收到 `tick` 时**不会调用 `mj_step`、不会更新图像/状态**。
+  - `STOPPED`：停止；具体是否退出进程由 dataflow 策略决定。
+  - `RESETTING`：预留，用于未来支持更细粒度的 reset 流程。
+
+- **状态迁移**（由 `sim_control` 触发）：
+  - `START`：
+    - 若在 `UNINITIALIZED` / `STOPPED`，重置步数并进入 `RUNNING`；
+    - 其它状态下视为「强制运行」，进入 `RUNNING`。
+  - `PAUSE`：仅当 `RUNNING` 时进入 `PAUSED`。
+  - `RESUME`：仅当 `PAUSED` 时恢复为 `RUNNING`。
+  - `RESET`：清空内部 step 计数、开启新 episode，并进入 `RUNNING`。
+  - `STOP`：进入 `STOPPED`。
+
+- **与 topic / HTTP 的关系**：
+  - 输入 `sim_control` 由 `control_gateway` 根据 `/sim/control` HTTP 请求生成；
+  - 每次处理控制指令或 `tick` 后，`mujoco` 会通过 `sim_status` 输出当前：
+    - `status_name`（上述字符串枚举）
+    - `status_code`（简单整数映射，供前端/监控使用）
+    - `current_step`（当前仿真步数）
+    - `episode_index`（第几次 reset / start）
+  - `control_gateway` 订阅 `sim_status` 并通过 `GET /sim/status` 暴露给前端。当前端调用 `POST /sim/control` 改变状态时，新的状态会体现在后续的 `sim_status` 中。 
 
 ## 渲染后端
 
