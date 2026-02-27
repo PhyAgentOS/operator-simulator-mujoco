@@ -321,8 +321,8 @@ def main() -> int:
                             now = time.time()
                             for cam_name, cam_config in config.image_forward.items():
                                 output_id = cam_config.output_id
-                                if cam_config.hz is not None:
-                                    interval = 1.0 / cam_config.hz
+                                if cam_config.fps is not None:
+                                    interval = 1.0 / cam_config.fps
                                     if now - camera_last_time[cam_name] < interval:
                                         continue
                                     camera_last_time[cam_name] = now

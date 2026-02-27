@@ -25,14 +25,14 @@ robots:
   - id: robot_1
     joints: ["j3"]
 
-# 相机输出配置：MuJoCo 模型中的 camera 名称 -> output_id 或 { output, hz }
-# 无 hz 时随 tick 输出。camera 名称需与模型 XML 中 camera 的 name 属性一致
+# 相机输出配置：MuJoCo 模型中的 camera 名称 -> output_id 或 { output, fps }
+# 无 fps 时随 tick 输出。camera 名称需与模型 XML 中 camera 的 name 属性一致
 # image_format: raw（默认）或 jpeg/png，均输出 forge_msgs.Image（压缩时 encoding 为 jpeg/png）
 # image_jpeg_quality: JPEG 质量（1-100，仅 image_format=jpeg 时生效）
 image_format: raw
 image_jpeg_quality: 90
 
 image_forward:
-  camera/main: { output: "image/main", hz: 30, width: 640, height: 480 }
-  camera/wrist: { output: "image/wrist", hz: 15, width: 640, height: 480 }
+  camera/main: { output: "image/main", fps: 30, width: 640, height: 480 }
+  camera/wrist: { output: "image/wrist", fps: 15, width: 640, height: 480 }
   camera/depth: { output: "image/depth", width: 640, height: 480 }

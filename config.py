@@ -43,7 +43,7 @@ class CameraConfig:
     """单个相机的输出配置。"""
 
     output_id: str
-    hz: float | None = None  # None 表示随 tick 输出
+    fps: float | None = None  # None 表示随 tick 输出
     width: int | None = None
     height: int | None = None
 
@@ -51,11 +51,12 @@ class CameraConfig:
 def _parse_image_forward(value: Any) -> CameraConfig:
     """解析 image_forward 单个条目，支持简写或完整形式。"""
     if isinstance(value, str):
-        return CameraConfig(output_id=value, hz=None)
+        return CameraConfig(output_id=value, fps=None)
     if isinstance(value, dict):
+        fps = value.get("fps", value.get("hz"))  # 兼容 hz
         return CameraConfig(
             output_id=value.get("output", value.get("output_id", "")),
-            hz=value.get("hz"),
+            fps=fps,
             width=value.get("width"),
             height=value.get("height"),
         )
