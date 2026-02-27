@@ -72,3 +72,20 @@ def sim_state_to_robot_state(
             actuators[actuator_name] = sim_state.actuators[joint_name]
 
     return RobotState(actuators=actuators)
+
+
+def robot_state_to_robot_action(
+    state: RobotState,
+    robot: RobotConfig,
+) -> RobotAction:
+    """将 RobotState 转换为该机器人的 RobotAction（透传同名 actuator）。"""
+    actuators: dict[str, ActuatorValue] = {}
+    for name in robot.actuator_order:
+        if name in state.actuators:
+            av = state.actuators[name]
+            actuators[name] = ActuatorValue(
+                value=av.value,
+                mode=av.mode,
+                unit=av.unit,
+            )
+    return RobotAction(actuators=actuators)

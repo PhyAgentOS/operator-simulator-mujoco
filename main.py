@@ -18,7 +18,7 @@ if "MUJOCO_GL" not in os.environ:
 import mujoco
 import numpy as np
 from dora import Node
-from forge_msgs import Action, Image
+from forge_msgs import Action, Image, RobotState
 from forge_robots_core import BaseActuator, BaseJoint
 from forge_simulators_mujoco import MuJoCoSimulator
 
@@ -26,7 +26,7 @@ from config import (
     MuJoCoNodeConfig,
     load_config,
 )
-from handlers import build_proprio_state, build_robot_action, sim_state_to_robot_state
+from handlers import build_proprio_state, build_robot_action, sim_state_to_robot_state, robot_state_to_robot_action
 
 from forge_common import get_logger
 
@@ -354,6 +354,24 @@ def main() -> int:
                             robot_action = build_robot_action(action, robot)
                             sim = simulators[robot.id]
                             sim.set_action(robot_action)
+
+                    case _:
+                        # 处理动态 ID 映射，例如 "robot_0/master_state"
+                        if input_id.endswith("/master_state"):
+                            target_robot_id = input_id.removesuffix("/master_state")
+                            robot_cfg = next(
+                                (r for r in config.robots if r.id == target_robot_id),
+                                None,
+                            )
+                            if robot_cfg:
+                                state = RobotState.from_arrow(
+                                    event["value"], robot_cfg.actuator_order
+                                )
+                                robot_action = robot_state_to_robot_action(
+                                    state, robot_cfg
+                                )
+                                sim = simulators[target_robot_id]
+                                sim.set_action(robot_action)
 
             case "STOP":
                 break
