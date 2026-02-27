@@ -16,13 +16,20 @@ class RobotConfig:
     """单个机器人的 joint -> actuator 映射配置。"""
 
     id: str
-    actuator_order: list[str]
-    joint_to_actuator: dict[str, str]
+    joints: list[str] = field(default_factory=list)
+    actuator_order: list[str] = field(default_factory=list)
+    joint_to_actuator: dict[str, str] = field(default_factory=dict)
     prefix: str = ""  # MuJoCo 模型中的名称前缀，如 item_1/；多机时通常由 id 推导
 
     def __post_init__(self) -> None:
+        if self.joints:
+            if not self.actuator_order:
+                self.actuator_order = list(self.joints)
+            if not self.joint_to_actuator:
+                self.joint_to_actuator = {j: j for j in self.joints}
+
         if not self.actuator_order:
-            raise ValueError(f"Robot '{self.id}': actuator_order 不能为空")
+            raise ValueError(f"Robot '{self.id}': actuator_order 或 joints 不能为空")
         for joint, act in self.joint_to_actuator.items():
             if act not in self.actuator_order:
                 raise ValueError(
@@ -84,8 +91,6 @@ class MuJoCoNodeConfig:
             raise ValueError("model_path 不能为空")
 
         joints_raw = data.get("joints", [])
-        if not joints_raw:
-            raise ValueError("配置需包含 joints（每项含 name、可选 mode/unit）")
         joints = [JointConfig(**j) for j in joints_raw]
 
         robots_raw = data.get("robots", [])
@@ -94,11 +99,21 @@ class MuJoCoNodeConfig:
             robots.append(
                 RobotConfig(
                     id=r["id"],
-                    actuator_order=r["actuator_order"],
+                    joints=r.get("joints", []),
+                    actuator_order=r.get("actuator_order", []),
                     joint_to_actuator=r.get("joint_to_actuator", {}),
                     prefix=r.get("prefix", ""),
                 )
             )
+
+        # 如果全局 joints 为空，从 robots 推导
+        if not joints:
+            all_joint_names = []
+            for r in robots:
+                for j_name in r.joint_to_actuator.keys():
+                    if j_name not in all_joint_names:
+                        all_joint_names.append(j_name)
+            joints = [JointConfig(name=n) for n in all_joint_names]
 
         image_forward_raw = data.get("image_forward", {})
         if not isinstance(image_forward_raw, dict):
