@@ -1,8 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
+# 使用 SPEC 所在目录，避免 PyInstaller 按 spec 目录解析时路径重复。
 
+import os
+
+_spec_dir = os.path.dirname(os.path.abspath(SPEC))
 
 a = Analysis(
-    ['packages/nodes/simulators/mujoco/main.py'],
+    [os.path.join(_spec_dir, 'main.py')],
     pathex=[],
     binaries=[],
     datas=[],
