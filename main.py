@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 import sys
-import time
 from pathlib import Path
 
 # 渲染后端：须在 import mujoco 之前设置。默认 egl 便于无显示器/SSH/服务器；
@@ -22,10 +21,7 @@ from forge_msgs import Action, Image, RobotState
 from forge_robots_core import BaseActuator, BaseJoint
 from forge_simulators_mujoco import MuJoCoSimulator
 
-from config import (
-    MuJoCoNodeConfig,
-    load_config,
-)
+from config import MuJoCoNodeConfig, load_config
 from handlers import build_proprio_state, build_robot_action, sim_state_to_robot_state, robot_state_to_robot_action
 
 from forge_common import get_logger
@@ -193,6 +189,15 @@ def main() -> int:
     data = mujoco.MjData(model)
 
     # 为每个 robot 创建 MuJoCoSimulator
+    # 预先构建派生 actuator 状态配置，供 simulator 使用（例如 gripper 由 joint7/joint8 合成）
+    derived_state_cfg_for_sim: dict[str, dict[str, object]] = {}
+    for name, cfg in config.derived_state_cfg.items():
+        derived_state_cfg_for_sim[name] = {
+            "joint_names": list(cfg.joint_names),
+            "expr": cfg.state_expr,
+            "scale": cfg.state_scale,
+        }
+
     simulators: dict[str, MuJoCoSimulator] = {}
     for robot in config.robots:
         joints, actuators = _build_joints_and_actuators(config, robot)
@@ -202,6 +207,7 @@ def main() -> int:
             data=data,
             joints=joints,
             actuators=actuators,
+            derived_state_cfg=derived_state_cfg_for_sim,
             prefix=prefix,
         )
         simulators[robot.id] = sim
@@ -234,13 +240,17 @@ def main() -> int:
             )
             return 1
 
-    # 相机节流：记录上次输出时间
-    camera_last_time: dict[str, float] = {name: 0.0 for name in config.camera_names}
+    # 相机按仿真时间节流：下次应输出帧的 sim_time
+    next_camera_time: dict[str, float] = {name: 0.0 for name in config.camera_names}
+
+    control_period_sec = config.control_period_sec
+    physics_dt = float(model.opt.timestep)
 
     node = Node()
 
     # 仿真状态机：默认沿用现有行为直接 RUNNING，便于不接 sim_control 时保持兼容
     sim_mode = "RUNNING"
+    sim_time = 0.0
     current_step = 0
     episode_index = 0
 
@@ -264,7 +274,10 @@ def main() -> int:
                         if action == "START":
                             if sim_mode in ("UNINITIALIZED", "STOPPED"):
                                 current_step = 0
+                                sim_time = 0.0
                                 episode_index += 1
+                                for k in next_camera_time:
+                                    next_camera_time[k] = 0.0
                             sim_mode = "RUNNING"
                         elif action == "PAUSE" and sim_mode == "RUNNING":
                             sim_mode = "PAUSED"
@@ -272,7 +285,10 @@ def main() -> int:
                             sim_mode = "RUNNING"
                         elif action == "RESET":
                             current_step = 0
+                            sim_time = 0.0
                             episode_index += 1
+                            for k in next_camera_time:
+                                next_camera_time[k] = 0.0
                             sim_mode = "RUNNING"
                         elif action == "STOP":
                             sim_mode = "STOPPED"
@@ -282,28 +298,35 @@ def main() -> int:
                             "status_code": SIM_STATUS_CODE.get(sim_mode, -1),
                             "current_step": current_step,
                             "episode_index": episode_index,
+                            "sim_time": sim_time,
                         }
                         node.send_output("sim_status", json.dumps(status).encode("utf-8"))
 
                     case "tick":
                         if sim_mode != "RUNNING":
-                            # 完全暂停：不步进、不更新图像，只更新 running_time 由上层按需处理
+                            # 完全暂停：不步进、不更新图像，只更新 status 由上层按需处理
                             status = {
                                 "status_name": sim_mode,
                                 "status_code": SIM_STATUS_CODE.get(sim_mode, -1),
                                 "current_step": current_step,
                                 "episode_index": episode_index,
+                                "sim_time": sim_time,
                             }
                             node.send_output(
                                 "sim_status", json.dumps(status).encode("utf-8")
                             )
                             continue
 
-                        # 仿真步进
-                        mujoco.mj_step(model, data)
-                        current_step += 1
+                        # 每 tick 执行若干物理子步（控制周期 / 物理步长）
+                        n_steps = max(
+                            1, round(control_period_sec / physics_dt)
+                        )
+                        for _ in range(n_steps):
+                            mujoco.mj_step(model, data)
+                            sim_time += physics_dt
+                        current_step += n_steps
 
-                        # 读取状态并输出 ProprioState
+                        # 每 tick 输出一次 state
                         robot_states: dict[str, object] = {}
                         for robot in config.robots:
                             sim = simulators[robot.id]
@@ -316,35 +339,51 @@ def main() -> int:
                             "proprio_state", proprio_state.to_arrow(config.joint_order)
                         )
 
-                        # 相机输出（按 hz 节流）
+                        # 相机按 sim_time 节流
                         if renderer is not None:
-                            now = time.time()
                             for cam_name, cam_config in config.image_forward.items():
                                 output_id = cam_config.output_id
                                 if cam_config.fps is not None:
-                                    interval = 1.0 / cam_config.fps
-                                    if now - camera_last_time[cam_name] < interval:
-                                        continue
-                                    camera_last_time[cam_name] = now
-
-                                try:
-                                    renderer.update_scene(data, camera=cam_name)
-                                    pixels = renderer.render()
-                                    payload = _build_image_payload(
-                                        pixels, config, cv2_module
-                                    )
-                                    node.send_output(output_id, payload)
-                                except Exception as e:
-                                    print(
-                                        f"[mujoco] 渲染相机 {cam_name} 失败: {e}",
-                                        file=sys.stderr,
-                                    )
+                                    cam_period = 1.0 / cam_config.fps
+                                    while sim_time >= next_camera_time[cam_name]:
+                                        next_camera_time[cam_name] += cam_period
+                                        try:
+                                            renderer.update_scene(
+                                                data, camera=cam_name
+                                            )
+                                            pixels = renderer.render()
+                                            payload = _build_image_payload(
+                                                pixels, config, cv2_module
+                                            )
+                                            node.send_output(output_id, payload)
+                                        except Exception as e:
+                                            print(
+                                                f"[mujoco] 渲染相机 {cam_name} 失败: {e}",
+                                                file=sys.stderr,
+                                            )
+                                else:
+                                    # 无 fps 时随 tick 输出一帧
+                                    try:
+                                        renderer.update_scene(
+                                            data, camera=cam_name
+                                        )
+                                        pixels = renderer.render()
+                                        payload = _build_image_payload(
+                                            pixels, config, cv2_module
+                                        )
+                                        node.send_output(output_id, payload)
+                                    except Exception as e:
+                                        print(
+                                            f"[mujoco] 渲染相机 {cam_name} 失败: {e}",
+                                            file=sys.stderr,
+                                        )
 
                         status = {
                             "status_name": sim_mode,
                             "status_code": SIM_STATUS_CODE.get(sim_mode, -1),
                             "current_step": current_step,
                             "episode_index": episode_index,
+                            "sim_time": sim_time,
                         }
                         node.send_output("sim_status", json.dumps(status).encode("utf-8"))
 

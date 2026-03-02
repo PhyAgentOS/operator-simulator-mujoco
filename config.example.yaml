@@ -5,8 +5,13 @@
 #   MUJOCO_GL=egl   - 无头 GPU 渲染（推荐）
 #   MUJOCO_GL=osmesa - 软件渲染（无 GPU，需 libOSMesa）
 #   MUJOCO_GL=glfw  - 需要显示器/窗口
+#
+# 时间与频率：control_hz 为控制周期频率，需与 dataflow 中 mujoco 的 tick 间隔一致（如 50Hz → 20ms）
 
 model_path: ./model.xml
+
+# 控制周期频率（Hz），缺省 50；与 dataflow 中 tick 间隔一致（50 → 20ms）
+control_hz: 50
 
 joints:
   - name: j1
@@ -18,6 +23,15 @@ joints:
   - name: j3
     mode: position
     unit: radians
+  # 例如：夹爪由两个 finger joint 合成，可使用派生配置：
+  # - name: gripper
+  #   mode: prismatic
+  #   unit: millimeters
+  #   # value_raw = qpos[finger_joint_1] - qpos[finger_joint_2]
+  #   # value = value_raw * state_scale （米 → 毫米）
+  #   state_from_joints: ["finger_joint_1", "finger_joint_2"]
+  #   state_expr: diff        # 或 sum
+  #   state_scale: 1000.0     # 缺省 1.0
 
 robots:
   - id: robot_0
