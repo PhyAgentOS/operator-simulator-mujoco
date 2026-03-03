@@ -284,6 +284,7 @@ def main() -> int:
                         elif action == "RESUME" and sim_mode == "PAUSED":
                             sim_mode = "RUNNING"
                         elif action == "RESET":
+                            mujoco.mj_resetData(model, data)
                             current_step = 0
                             sim_time = 0.0
                             episode_index += 1
