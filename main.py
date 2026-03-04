@@ -261,14 +261,20 @@ def main() -> int:
 
                 match input_id:
                     case "sim_control":
-                        # 解析来自 control_gateway 的控制指令
+                        # 解析来自 control_gateway 的控制指令（仅支持 Arrow SimControl）
                         action: str | None = None
+                        raw = event.get("value")
                         try:
-                            raw = event.get("value")
-                            payload = json.loads(bytes(raw).decode("utf-8")) if raw is not None else {}
-                            if isinstance(payload, dict):
-                                action = payload.get("action")
-                        except Exception:
+                            from forge_msgs import SimControl  # 局部导入以避免循环依赖
+
+                            ctrl = SimControl.from_arrow(raw)
+                        except Exception as e:
+                            ctrl = None
+
+                        if ctrl is not None:
+                            action = ctrl.action
+                        else:
+                            print(f"[mujoco] SimControl.from_arrow 解析失败，忽略控制指令，value_type={type(raw)}", file=sys.stderr)
                             action = None
 
                         if action == "START":
