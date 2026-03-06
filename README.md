@@ -127,5 +127,5 @@ uv run python main.py --config config.yaml
 ## 依赖
 
 - `mujoco`：由本包直接依赖
-- `forge-simulators-mujoco`：MuJoCo 仿真封装
+- MuJoCo 仿真逻辑已内置于本节点（`simulator.py`），不再依赖 forge 的 forge-simulators-mujoco
 - `forge-msgs`：Action、ProprioState 等消息格式

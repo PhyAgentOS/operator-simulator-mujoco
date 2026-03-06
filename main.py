@@ -18,13 +18,16 @@ import mujoco
 import numpy as np
 from dora import Node
 from forge_msgs import Action, Image, RobotState
-from forge_robots_core import BaseActuator, BaseJoint
-from forge_simulators_mujoco import MuJoCoSimulator
+from forge_common import get_logger
 
 from config import MuJoCoNodeConfig, load_config
-from handlers import build_proprio_state, build_robot_action, sim_state_to_robot_state, robot_state_to_robot_action
-
-from forge_common import get_logger
+from handlers import (
+    build_proprio_state,
+    build_robot_action,
+    robot_state_to_robot_action,
+    sim_state_to_robot_state,
+)
+from simulator import ActuatorSpec, JointSpec, MuJoCoSimulator
 
 logger = get_logger(__name__)
 
@@ -85,20 +88,20 @@ def _actuator_limits(unit: str) -> tuple[float, float]:
 def _build_joints_and_actuators(
     node_config: MuJoCoNodeConfig,
     robot_config,
-) -> tuple[list[BaseJoint], list[BaseActuator]]:
-    """从节点配置的 JointConfig 与 RobotConfig 构建 BaseJoint 和 BaseActuator 列表。"""
+) -> tuple[list[JointSpec], list[ActuatorSpec]]:
+    """从节点配置的 JointConfig 与 RobotConfig 构建 JointSpec 和 ActuatorSpec 列表。"""
     joint_specs = {j.name: j for j in node_config.joints}
     actuator_to_joint = {
         act: joint for joint, act in robot_config.joint_to_actuator.items()
     }
 
-    joints = []
+    joints: list[JointSpec] = []
     for name in robot_config.joint_to_actuator.keys():
         spec = joint_specs.get(name)
         mode = spec.mode if spec else "position"
-        joints.append(BaseJoint(name=name, mode=mode))
+        joints.append(JointSpec(name=name, mode=mode))
 
-    actuators = []
+    actuators: list[ActuatorSpec] = []
     for i, actuator_name in enumerate(robot_config.actuator_order):
         joint_name = actuator_to_joint.get(actuator_name)
         spec = joint_specs.get(joint_name) if joint_name else None
@@ -106,7 +109,7 @@ def _build_joints_and_actuators(
         mode = spec.mode if spec else "position"
         min_val, max_val = _actuator_limits(unit)
         actuators.append(
-            BaseActuator(
+            ActuatorSpec(
                 name=actuator_name,
                 id=i,
                 control_mode=mode,
