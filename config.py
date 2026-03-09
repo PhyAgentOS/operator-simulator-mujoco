@@ -90,6 +90,10 @@ class MuJoCoNodeConfig:
     image_format: Literal["raw", "jpeg", "png"] = "raw"
     image_jpeg_quality: int = 90
     control_hz: float = 50.0  # 控制周期频率，与 dataflow 中 mujoco 的 tick 间隔一致（如 50 → 20ms）
+    # 可选：输出任意对象的 2D 位姿（Pose2DList），按 {id: body_name} 配置
+    # - id: 下游识别用的唯一标识（推荐用 robot_id，但也可用自定义 id）
+    # - body_name: MuJoCo XML 中 body 的 name；若 id 恰好等于某个 robot_id，则允许使用该 robot 的 prefix 拼接
+    pose_2ds: dict[str, str] = field(default_factory=dict)
 
     @property
     def control_period_sec(self) -> float:
@@ -213,6 +217,19 @@ class MuJoCoNodeConfig:
         if control_hz <= 0:
             raise ValueError("control_hz 必须大于 0")
 
+        pose_2ds_raw = data.get("pose_2ds", {})
+        pose_2ds: dict[str, str] = {}
+        if pose_2ds_raw:
+            if not isinstance(pose_2ds_raw, dict):
+                raise ValueError("pose_2ds 必须是 {id: body_name} 的字典")
+            for k, v in pose_2ds_raw.items():
+                rk = str(k).strip()
+                rv = str(v).strip()
+                if not rk or not rv:
+                    continue
+                pose_2ds[rk] = rv
+        # pose_2d 输出口固定为 "pose_2d"
+
         return cls(
             model_path=model_path,
             joints=joints,
@@ -222,6 +239,7 @@ class MuJoCoNodeConfig:
             image_format=image_format,
             image_jpeg_quality=image_jpeg_quality,
             control_hz=control_hz,
+            pose_2ds=pose_2ds,
         )
 
     @classmethod

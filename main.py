@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -17,7 +18,7 @@ if "MUJOCO_GL" not in os.environ:
 import mujoco
 import numpy as np
 from dora import Node
-from forge_msgs import Action, Image, RobotState
+from forge_msgs import Action, Image, Pose2D, Pose2DList, RobotState
 from forge_common import get_logger
 
 from config import MuJoCoNodeConfig, load_config
@@ -40,6 +41,20 @@ SIM_STATUS_CODE = {
     "STOPPED": 4,
     "RESETTING": 5,
 }
+
+def _resolve_mujoco_body_name(prefix: str, body: str) -> str:
+    """将配置的 body 名与 robot prefix 拼成 MuJoCo body name。若 body 已包含 prefix，则不重复拼接。"""
+    b = str(body).strip()
+    if not b:
+        return ""
+    p = prefix or ""
+    if p and not p.endswith("/"):
+        p += "/"
+    if p and (b.startswith(p) or b.startswith(p.lstrip("/"))):
+        name = b
+    else:
+        name = p + b
+    return name.lstrip("/")
 
 
 def _patch_mujoco_renderer_close() -> None:
@@ -77,11 +92,21 @@ def _parse_args() -> argparse.Namespace:
 
 def _actuator_limits(unit: str) -> tuple[float, float]:
     """按单位返回合理的 min/max（用于限位裁剪）。"""
-    if unit in ("millimeters", "millimeters/s"):
+    # 位置单位
+    if unit == "millimeters":
         return 0.0, 50.0
-    if unit in ("meters", "meters/s"):
+    if unit == "meters":
         return 0.0, 0.05
-    # radians 等
+    if unit == "radians":
+        return -3.14, 3.14
+    # 速度单位
+    if unit == "millimeters/s":
+        return -50.0, 50.0
+    if unit == "meters/s":
+        return -1.0, 1.0
+    if unit in ("radians/s", "radians_s"):
+        return -10.0, 10.0
+    # 默认按弧度位置
     return -3.14, 3.14
 
 
@@ -214,6 +239,37 @@ def main() -> int:
             prefix=prefix,
         )
         simulators[robot.id] = sim
+
+    # 解析 pose_2d 的 body id（若配置了 pose_2ds）：缓存 {id -> body_id}
+    pose_2d_body_ids: dict[str, int] = {}
+    if config.pose_2ds:
+        robot_prefix_by_id = {r.id: (r.prefix or "") for r in config.robots}
+        targets: dict[str, str] = {}
+
+        # 用 pose_2ds 配置任意 id 的目标（若 id 匹配 robot_id，则使用该 robot 的 prefix 拼接）
+        for tid, body_cfg in config.pose_2ds.items():
+            prefix = robot_prefix_by_id.get(tid, "")
+            body_name = _resolve_mujoco_body_name(prefix, body_cfg)
+            if body_name:
+                targets[tid] = body_name
+
+        # 最后解析 mj id
+        for tid, body_name in targets.items():
+            body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
+            if body_id >= 0:
+                pose_2d_body_ids[tid] = body_id
+                logger.info(
+                    "[mujoco] pose_2d id=%s 使用 body %s (id=%s)",
+                    tid,
+                    body_name,
+                    body_id,
+                )
+            else:
+                logger.warning(
+                    "[mujoco] pose_2d body '%s' 在模型中未找到（id=%s），将跳过该 id 的 pose_2d",
+                    body_name,
+                    tid,
+                )
 
     # 相机渲染器（如有配置）
     renderer = None
@@ -348,6 +404,21 @@ def main() -> int:
                         node.send_output(
                             "proprio_state", proprio_state.to_arrow(config.joint_order)
                         )
+
+                        # 可选：输出世界系 2D 位姿（Pose2DList，按 robot_id keyed）
+                        if pose_2d_body_ids:
+                            poses: dict[str, Pose2D] = {}
+                            for rid, bid in pose_2d_body_ids.items():
+                                x, y = float(data.xpos[bid][0]), float(data.xpos[bid][1])
+                                q = data.xquat[bid]
+                                theta = math.atan2(
+                                    2.0 * (q[0] * q[3] + q[1] * q[2]),
+                                    1.0 - 2.0 * (q[2] ** 2 + q[3] ** 2),
+                                )
+                                poses[rid] = Pose2D(x=x, y=y, theta=theta)
+
+                            if poses:
+                                node.send_output("pose_2d", Pose2DList(poses=poses).to_arrow())
 
                         # 相机按 sim_time 节流
                         if renderer is not None:

@@ -185,14 +185,20 @@ class MuJoCoSimulator:
                 continue
 
             qpos_value = qpos[addr]
+            # 状态始终报当前位置（qpos）；速度型关节的 unit 为 radians/s 等，报告时用位置单位
             if unit in ("millimeters", "millimeters/s"):
+                report_unit = "millimeters"
                 value = float(qpos_value) * 1000.0
+            elif unit in ("meters", "meters/s"):
+                report_unit = "meters"
+                value = float(qpos_value)
             else:
+                report_unit = "radians"
                 value = float(qpos_value)
             actuator_values[logical_name] = ActuatorValue(
                 value=value,
                 mode="position",
-                unit=unit,
+                unit=report_unit,
             )
 
         for act_name, cfg in self._derived_state_cfg.items():
@@ -262,9 +268,11 @@ class MuJoCoSimulator:
                 continue
 
             ctrl_index = self._ctrl_indices[logical_name]
+            # 长度单位统一为米写入 ctrl；角度/角速度（radians、radians/s）原样写入
             if act_val.unit in ("millimeters", "millimeters/s"):
                 ctrl[ctrl_index] = act_val.value / 1000.0
             else:
+                # position(rad)、velocity(rad/s) 等与 MuJoCo 一致，直接赋值（如速度 1 -> ctrl=1）
                 ctrl[ctrl_index] = act_val.value
 
     def _get_safe_action(self, action: RobotAction) -> RobotAction:
