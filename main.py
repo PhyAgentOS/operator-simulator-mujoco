@@ -57,6 +57,30 @@ def _resolve_mujoco_body_name(prefix: str, body: str) -> str:
     return name.lstrip("/")
 
 
+def _find_root_body_under_prefix(model: mujoco.MjModel, prefix: str) -> int | None:
+    """
+    在 MuJoCo 模型中查找以 prefix 为前缀的「根 body」：名称形如 prefix/xxx 且 xxx 中无 '/'，
+    取 body id 最小的（attach 后该子树根节点）。未找到返回 None。
+    """
+    p = (prefix or "").strip()
+    if not p.endswith("/"):
+        p += "/"
+    if not p:
+        return None
+
+    candidate_id: int | None = None
+    for body_id in range(model.nbody):
+        name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, body_id)
+        if name is None or not name.startswith(p):
+            continue
+        suffix = name[len(p) :]
+        if "/" in suffix:
+            continue
+        if candidate_id is None or body_id < candidate_id:
+            candidate_id = body_id
+    return candidate_id
+
+
 def _patch_mujoco_renderer_close() -> None:
     """Renderer.__init__ 在 make_current() 失败时不会设置 _mjr_context，析构时 close() 会 AttributeError。"""
     def _safe_close(self) -> None:
@@ -270,6 +294,28 @@ def main() -> int:
                     body_name,
                     tid,
                 )
+
+    # 未在 pose_2ds 中配置的 robot：按 prefix 自动识别该子树根 body 作为 pose_2d
+    for robot in config.robots:
+        if robot.id in pose_2d_body_ids:
+            continue
+        prefix = robot.prefix or ""
+        body_id = _find_root_body_under_prefix(model, prefix)
+        if body_id is not None:
+            pose_2d_body_ids[robot.id] = body_id
+            body_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, body_id) or ""
+            logger.info(
+                "[mujoco] pose_2d id=%s 自动识别 body %s (id=%s)",
+                robot.id,
+                body_name,
+                body_id,
+            )
+        else:
+            logger.debug(
+                "[mujoco] pose_2d id=%s 未配置且 prefix=%r 下未找到根 body，跳过",
+                robot.id,
+                prefix,
+            )
 
     # 相机渲染器（如有配置）
     renderer = None
