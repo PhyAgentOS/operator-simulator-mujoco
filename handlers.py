@@ -67,6 +67,11 @@ def sim_state_to_robot_state(
     actuators: dict[str, ActuatorValue] = {}
 
     for actuator_name in robot.actuator_order:
+        # 优先读取模型侧同名 actuator/joint（MuJoCo 内部常见）
+        if actuator_name in sim_state.actuators:
+            actuators[actuator_name] = sim_state.actuators[actuator_name]
+            continue
+        # 兼容旧行为：读取 policy joint 名
         joint_name = actuator_to_joint.get(actuator_name)
         if joint_name is not None and joint_name in sim_state.actuators:
             actuators[actuator_name] = sim_state.actuators[joint_name]
@@ -78,11 +83,27 @@ def robot_state_to_robot_action(
     state: RobotState,
     robot: RobotConfig,
 ) -> RobotAction:
-    """将 RobotState 转换为该机器人的 RobotAction（透传同名 actuator）。"""
+    """将 RobotState 转换为该机器人的 RobotAction。
+
+    兼容两种输入格式：
+    1) state.actuators 使用 actuator 名称（默认）
+    2) state.actuators 使用 joint 名称（多臂场景常见），通过 joint_to_actuator 映射
+    """
     actuators: dict[str, ActuatorValue] = {}
+    actuator_to_joint = {v: k for k, v in robot.joint_to_actuator.items()}
     for name in robot.actuator_order:
         if name in state.actuators:
             av = state.actuators[name]
+            actuators[name] = ActuatorValue(
+                value=av.value,
+                mode=av.mode,
+                unit=av.unit,
+            )
+            continue
+        # 兼容 joint-name keyed RobotState
+        joint_name = actuator_to_joint.get(name)
+        if joint_name and joint_name in state.actuators:
+            av = state.actuators[joint_name]
             actuators[name] = ActuatorValue(
                 value=av.value,
                 mode=av.mode,

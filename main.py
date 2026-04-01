@@ -28,10 +28,6 @@ from config import (
 )
 from handlers import build_proprio_state, build_robot_action, sim_state_to_robot_state, robot_state_to_robot_action
 
-from forge_common import get_logger
-
-logger = get_logger(__name__)
-
 
 SIM_STATUS_CODE = {
     "UNINITIALIZED": 0,
@@ -97,10 +93,13 @@ def _build_joints_and_actuators(
     }
 
     joints = []
-    for name in robot_config.joint_to_actuator.keys():
-        spec = joint_specs.get(name)
+    # BaseJoint.name 需要匹配 MuJoCo 模型内部 joint 名称。
+    # 当外部配置使用 namespaced joint（如 robot_0/joint1）时，
+    # 通过 joint_to_actuator 映射到模型名（通常是 joint1）。
+    for joint_name, actuator_name in robot_config.joint_to_actuator.items():
+        spec = joint_specs.get(joint_name)
         mode = spec.mode if spec else "position"
-        joints.append(BaseJoint(name=name, mode=mode))
+        joints.append(BaseJoint(name=actuator_name, mode=mode))
 
     actuators = []
     for i, actuator_name in enumerate(robot_config.actuator_order):
@@ -364,12 +363,18 @@ def main() -> int:
                                 None,
                             )
                             if robot_cfg:
-                                state = RobotState.from_arrow(
-                                    event["value"], robot_cfg.actuator_order
-                                )
-                                robot_action = robot_state_to_robot_action(
-                                    state, robot_cfg
-                                )
+                                # 优先按 joint_to_actuator 的 joint 顺序解析（与 vr_device per-robot 输出一致）
+                                joint_parse_order = list(robot_cfg.joint_to_actuator.keys())
+                                state = RobotState.from_arrow(event["value"], joint_parse_order)
+                                robot_action = robot_state_to_robot_action(state, robot_cfg)
+                                # 兼容旧格式：若 joint-keyed 解析结果为空，再尝试 actuator 顺序解析
+                                if not robot_action.actuators:
+                                    state = RobotState.from_arrow(
+                                        event["value"], robot_cfg.actuator_order
+                                    )
+                                    robot_action = robot_state_to_robot_action(
+                                        state, robot_cfg
+                                    )
                                 sim = simulators[target_robot_id]
                                 sim.set_action(robot_action)
 
