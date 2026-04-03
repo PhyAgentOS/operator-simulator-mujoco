@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "dora-rs>=0.4.1",
+    "dora-rs==0.4.1",
     "forge-common",
     "forge-configs",
     "forge-msgs",
