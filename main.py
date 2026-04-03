@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
-import time
 from pathlib import Path
 
 # 渲染后端：须在 import mujoco 之前设置。默认 egl 便于无显示器/SSH/服务器；
@@ -18,15 +18,19 @@ if "MUJOCO_GL" not in os.environ:
 import mujoco
 import numpy as np
 from dora import Node
-from forge_msgs import Action, Image, RobotState
-from forge_robots_core import BaseActuator, BaseJoint
-from forge_simulators_mujoco import MuJoCoSimulator
+from forge_msgs import Action, Image, Pose2D, Pose2DList, RobotState
+from forge_common import get_logger
 
-from config import (
-    MuJoCoNodeConfig,
-    load_config,
+from config import MuJoCoNodeConfig, load_config
+from handlers import (
+    build_proprio_state,
+    build_robot_action,
+    robot_state_to_robot_action,
+    sim_state_to_robot_state,
 )
-from handlers import build_proprio_state, build_robot_action, sim_state_to_robot_state, robot_state_to_robot_action
+from simulator import ActuatorSpec, JointSpec, MuJoCoSimulator
+
+logger = get_logger(__name__)
 
 
 SIM_STATUS_CODE = {
@@ -37,6 +41,44 @@ SIM_STATUS_CODE = {
     "STOPPED": 4,
     "RESETTING": 5,
 }
+
+def _resolve_mujoco_body_name(prefix: str, body: str) -> str:
+    """将配置的 body 名与 robot prefix 拼成 MuJoCo body name。若 body 已包含 prefix，则不重复拼接。"""
+    b = str(body).strip()
+    if not b:
+        return ""
+    p = prefix or ""
+    if p and not p.endswith("/"):
+        p += "/"
+    if p and (b.startswith(p) or b.startswith(p.lstrip("/"))):
+        name = b
+    else:
+        name = p + b
+    return name.lstrip("/")
+
+
+def _find_root_body_under_prefix(model: mujoco.MjModel, prefix: str) -> int | None:
+    """
+    在 MuJoCo 模型中查找以 prefix 为前缀的「根 body」：名称形如 prefix/xxx 且 xxx 中无 '/'，
+    取 body id 最小的（attach 后该子树根节点）。未找到返回 None。
+    """
+    p = (prefix or "").strip()
+    if not p.endswith("/"):
+        p += "/"
+    if not p:
+        return None
+
+    candidate_id: int | None = None
+    for body_id in range(model.nbody):
+        name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, body_id)
+        if name is None or not name.startswith(p):
+            continue
+        suffix = name[len(p) :]
+        if "/" in suffix:
+            continue
+        if candidate_id is None or body_id < candidate_id:
+            candidate_id = body_id
+    return candidate_id
 
 
 def _patch_mujoco_renderer_close() -> None:
@@ -74,34 +116,41 @@ def _parse_args() -> argparse.Namespace:
 
 def _actuator_limits(unit: str) -> tuple[float, float]:
     """按单位返回合理的 min/max（用于限位裁剪）。"""
-    if unit in ("millimeters", "millimeters/s"):
+    # 位置单位
+    if unit == "millimeters":
         return 0.0, 50.0
-    if unit in ("meters", "meters/s"):
+    if unit == "meters":
         return 0.0, 0.05
-    # radians 等
+    if unit == "radians":
+        return -3.14, 3.14
+    # 速度单位
+    if unit == "millimeters/s":
+        return -50.0, 50.0
+    if unit == "meters/s":
+        return -1.0, 1.0
+    if unit in ("radians/s", "radians_s"):
+        return -10.0, 10.0
+    # 默认按弧度位置
     return -3.14, 3.14
 
 
 def _build_joints_and_actuators(
     node_config: MuJoCoNodeConfig,
     robot_config,
-) -> tuple[list[BaseJoint], list[BaseActuator]]:
-    """从节点配置的 JointConfig 与 RobotConfig 构建 BaseJoint 和 BaseActuator 列表。"""
+) -> tuple[list[JointSpec], list[ActuatorSpec]]:
+    """从节点配置的 JointConfig 与 RobotConfig 构建 JointSpec 和 ActuatorSpec 列表。"""
     joint_specs = {j.name: j for j in node_config.joints}
     actuator_to_joint = {
         act: joint for joint, act in robot_config.joint_to_actuator.items()
     }
 
-    joints = []
-    # BaseJoint.name 需要匹配 MuJoCo 模型内部 joint 名称。
-    # 当外部配置使用 namespaced joint（如 robot_0/joint1）时，
-    # 通过 joint_to_actuator 映射到模型名（通常是 joint1）。
+    joints: list[JointSpec] = []
     for joint_name, actuator_name in robot_config.joint_to_actuator.items():
         spec = joint_specs.get(joint_name)
         mode = spec.mode if spec else "position"
-        joints.append(BaseJoint(name=actuator_name, mode=mode))
+        joints.append(JointSpec(name=actuator_name, mode=mode))
 
-    actuators = []
+    actuators: list[ActuatorSpec] = []
     for i, actuator_name in enumerate(robot_config.actuator_order):
         joint_name = actuator_to_joint.get(actuator_name)
         spec = joint_specs.get(joint_name) if joint_name else None
@@ -109,7 +158,7 @@ def _build_joints_and_actuators(
         mode = spec.mode if spec else "position"
         min_val, max_val = _actuator_limits(unit)
         actuators.append(
-            BaseActuator(
+            ActuatorSpec(
                 name=actuator_name,
                 id=i,
                 control_mode=mode,
@@ -192,6 +241,15 @@ def main() -> int:
     data = mujoco.MjData(model)
 
     # 为每个 robot 创建 MuJoCoSimulator
+    # 预先构建派生 actuator 状态配置，供 simulator 使用（例如 gripper 由 joint7/joint8 合成）
+    derived_state_cfg_for_sim: dict[str, dict[str, object]] = {}
+    for name, cfg in config.derived_state_cfg.items():
+        derived_state_cfg_for_sim[name] = {
+            "joint_names": list(cfg.joint_names),
+            "expr": cfg.state_expr,
+            "scale": cfg.state_scale,
+        }
+
     simulators: dict[str, MuJoCoSimulator] = {}
     for robot in config.robots:
         joints, actuators = _build_joints_and_actuators(config, robot)
@@ -201,9 +259,63 @@ def main() -> int:
             data=data,
             joints=joints,
             actuators=actuators,
+            derived_state_cfg=derived_state_cfg_for_sim,
             prefix=prefix,
         )
         simulators[robot.id] = sim
+
+    # 解析 pose_2d 的 body id（若配置了 pose_2ds）：缓存 {id -> body_id}
+    pose_2d_body_ids: dict[str, int] = {}
+    if config.pose_2ds:
+        robot_prefix_by_id = {r.id: (r.prefix or "") for r in config.robots}
+        targets: dict[str, str] = {}
+
+        # 用 pose_2ds 配置任意 id 的目标（若 id 匹配 robot_id，则使用该 robot 的 prefix 拼接）
+        for tid, body_cfg in config.pose_2ds.items():
+            prefix = robot_prefix_by_id.get(tid, "")
+            body_name = _resolve_mujoco_body_name(prefix, body_cfg)
+            if body_name:
+                targets[tid] = body_name
+
+        # 最后解析 mj id
+        for tid, body_name in targets.items():
+            body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
+            if body_id >= 0:
+                pose_2d_body_ids[tid] = body_id
+                logger.info(
+                    "[mujoco] pose_2d id=%s 使用 body %s (id=%s)",
+                    tid,
+                    body_name,
+                    body_id,
+                )
+            else:
+                logger.warning(
+                    "[mujoco] pose_2d body '%s' 在模型中未找到（id=%s），将跳过该 id 的 pose_2d",
+                    body_name,
+                    tid,
+                )
+
+    # 未在 pose_2ds 中配置的 robot：按 prefix 自动识别该子树根 body 作为 pose_2d
+    for robot in config.robots:
+        if robot.id in pose_2d_body_ids:
+            continue
+        prefix = robot.prefix or ""
+        body_id = _find_root_body_under_prefix(model, prefix)
+        if body_id is not None:
+            pose_2d_body_ids[robot.id] = body_id
+            body_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, body_id) or ""
+            logger.info(
+                "[mujoco] pose_2d id=%s 自动识别 body %s (id=%s)",
+                robot.id,
+                body_name,
+                body_id,
+            )
+        else:
+            logger.debug(
+                "[mujoco] pose_2d id=%s 未配置且 prefix=%r 下未找到根 body，跳过",
+                robot.id,
+                prefix,
+            )
 
     # 相机渲染器（如有配置）
     renderer = None
@@ -233,13 +345,17 @@ def main() -> int:
             )
             return 1
 
-    # 相机节流：记录上次输出时间
-    camera_last_time: dict[str, float] = {name: 0.0 for name in config.camera_names}
+    # 相机按仿真时间节流：下次应输出帧的 sim_time
+    next_camera_time: dict[str, float] = {name: 0.0 for name in config.camera_names}
+
+    control_period_sec = config.control_period_sec
+    physics_dt = float(model.opt.timestep)
 
     node = Node()
 
     # 仿真状态机：默认沿用现有行为直接 RUNNING，便于不接 sim_control 时保持兼容
     sim_mode = "RUNNING"
+    sim_time = 0.0
     current_step = 0
     episode_index = 0
 
@@ -250,28 +366,41 @@ def main() -> int:
 
                 match input_id:
                     case "sim_control":
-                        # 解析来自 control_gateway 的控制指令
+                        # 解析来自 control_gateway 的控制指令（仅支持 Arrow SimControl）
                         action: str | None = None
+                        raw = event.get("value")
                         try:
-                            raw = event.get("value")
-                            payload = json.loads(bytes(raw).decode("utf-8")) if raw is not None else {}
-                            if isinstance(payload, dict):
-                                action = payload.get("action")
-                        except Exception:
+                            from forge_msgs import SimControl  # 局部导入以避免循环依赖
+
+                            ctrl = SimControl.from_arrow(raw)
+                        except Exception as e:
+                            ctrl = None
+
+                        if ctrl is not None:
+                            action = ctrl.action
+                        else:
+                            print(f"[mujoco] SimControl.from_arrow 解析失败，忽略控制指令，value_type={type(raw)}", file=sys.stderr)
                             action = None
 
                         if action == "START":
                             if sim_mode in ("UNINITIALIZED", "STOPPED"):
                                 current_step = 0
+                                sim_time = 0.0
                                 episode_index += 1
+                                for k in next_camera_time:
+                                    next_camera_time[k] = 0.0
                             sim_mode = "RUNNING"
                         elif action == "PAUSE" and sim_mode == "RUNNING":
                             sim_mode = "PAUSED"
                         elif action == "RESUME" and sim_mode == "PAUSED":
                             sim_mode = "RUNNING"
                         elif action == "RESET":
+                            mujoco.mj_resetData(model, data)
                             current_step = 0
+                            sim_time = 0.0
                             episode_index += 1
+                            for k in next_camera_time:
+                                next_camera_time[k] = 0.0
                             sim_mode = "RUNNING"
                         elif action == "STOP":
                             sim_mode = "STOPPED"
@@ -281,28 +410,35 @@ def main() -> int:
                             "status_code": SIM_STATUS_CODE.get(sim_mode, -1),
                             "current_step": current_step,
                             "episode_index": episode_index,
+                            "sim_time": sim_time,
                         }
                         node.send_output("sim_status", json.dumps(status).encode("utf-8"))
 
                     case "tick":
                         if sim_mode != "RUNNING":
-                            # 完全暂停：不步进、不更新图像，只更新 running_time 由上层按需处理
+                            # 完全暂停：不步进、不更新图像，只更新 status 由上层按需处理
                             status = {
                                 "status_name": sim_mode,
                                 "status_code": SIM_STATUS_CODE.get(sim_mode, -1),
                                 "current_step": current_step,
                                 "episode_index": episode_index,
+                                "sim_time": sim_time,
                             }
                             node.send_output(
                                 "sim_status", json.dumps(status).encode("utf-8")
                             )
                             continue
 
-                        # 仿真步进
-                        mujoco.mj_step(model, data)
-                        current_step += 1
+                        # 每 tick 执行若干物理子步（控制周期 / 物理步长）
+                        n_steps = max(
+                            1, round(control_period_sec / physics_dt)
+                        )
+                        for _ in range(n_steps):
+                            mujoco.mj_step(model, data)
+                            sim_time += physics_dt
+                        current_step += n_steps
 
-                        # 读取状态并输出 ProprioState
+                        # 每 tick 输出一次 state
                         robot_states: dict[str, object] = {}
                         for robot in config.robots:
                             sim = simulators[robot.id]
@@ -315,35 +451,66 @@ def main() -> int:
                             "proprio_state", proprio_state.to_arrow(config.joint_order)
                         )
 
-                        # 相机输出（按 hz 节流）
+                        # 可选：输出世界系 2D 位姿（Pose2DList，按 robot_id keyed）
+                        if pose_2d_body_ids:
+                            poses: dict[str, Pose2D] = {}
+                            for rid, bid in pose_2d_body_ids.items():
+                                x, y = float(data.xpos[bid][0]), float(data.xpos[bid][1])
+                                q = data.xquat[bid]
+                                theta = math.atan2(
+                                    2.0 * (q[0] * q[3] + q[1] * q[2]),
+                                    1.0 - 2.0 * (q[2] ** 2 + q[3] ** 2),
+                                )
+                                poses[rid] = Pose2D(x=x, y=y, theta=theta)
+
+                            if poses:
+                                node.send_output("pose_2d", Pose2DList(poses=poses).to_arrow())
+
+                        # 相机按 sim_time 节流
                         if renderer is not None:
-                            now = time.time()
                             for cam_name, cam_config in config.image_forward.items():
                                 output_id = cam_config.output_id
                                 if cam_config.fps is not None:
-                                    interval = 1.0 / cam_config.fps
-                                    if now - camera_last_time[cam_name] < interval:
-                                        continue
-                                    camera_last_time[cam_name] = now
-
-                                try:
-                                    renderer.update_scene(data, camera=cam_name)
-                                    pixels = renderer.render()
-                                    payload = _build_image_payload(
-                                        pixels, config, cv2_module
-                                    )
-                                    node.send_output(output_id, payload)
-                                except Exception as e:
-                                    print(
-                                        f"[mujoco] 渲染相机 {cam_name} 失败: {e}",
-                                        file=sys.stderr,
-                                    )
+                                    cam_period = 1.0 / cam_config.fps
+                                    while sim_time >= next_camera_time[cam_name]:
+                                        next_camera_time[cam_name] += cam_period
+                                        try:
+                                            renderer.update_scene(
+                                                data, camera=cam_name
+                                            )
+                                            pixels = renderer.render()
+                                            payload = _build_image_payload(
+                                                pixels, config, cv2_module
+                                            )
+                                            node.send_output(output_id, payload)
+                                        except Exception as e:
+                                            print(
+                                                f"[mujoco] 渲染相机 {cam_name} 失败: {e}",
+                                                file=sys.stderr,
+                                            )
+                                else:
+                                    # 无 fps 时随 tick 输出一帧
+                                    try:
+                                        renderer.update_scene(
+                                            data, camera=cam_name
+                                        )
+                                        pixels = renderer.render()
+                                        payload = _build_image_payload(
+                                            pixels, config, cv2_module
+                                        )
+                                        node.send_output(output_id, payload)
+                                    except Exception as e:
+                                        print(
+                                            f"[mujoco] 渲染相机 {cam_name} 失败: {e}",
+                                            file=sys.stderr,
+                                        )
 
                         status = {
                             "status_name": sim_mode,
                             "status_code": SIM_STATUS_CODE.get(sim_mode, -1),
                             "current_step": current_step,
                             "episode_index": episode_index,
+                            "sim_time": sim_time,
                         }
                         node.send_output("sim_status", json.dumps(status).encode("utf-8"))
 

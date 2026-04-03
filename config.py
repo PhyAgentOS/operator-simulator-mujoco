@@ -39,6 +39,18 @@ class RobotConfig:
 
 
 @dataclass
+class DerivedActuatorStateConfig:
+    """某个逻辑关节/执行器的派生状态配置。
+
+    用于描述：该关节/执行器的状态如何由一个或多个 MuJoCo joint 的 qpos 合成。
+    """
+
+    joint_names: list[str] = field(default_factory=list)
+    state_expr: Literal["diff", "sum"] | None = None
+    state_scale: float = 1.0
+
+
+@dataclass
 class CameraConfig:
     """单个相机的输出配置。"""
 
@@ -70,9 +82,23 @@ class MuJoCoNodeConfig:
     model_path: str
     joints: list[JointConfig]
     robots: list[RobotConfig]
+    # name -> DerivedActuatorStateConfig，用于如 gripper 由 joint7/joint8 合成的场景
+    derived_state_cfg: dict[str, DerivedActuatorStateConfig] = field(
+        default_factory=dict
+    )
     image_forward: dict[str, CameraConfig] = field(default_factory=dict)
     image_format: Literal["raw", "jpeg", "png"] = "raw"
     image_jpeg_quality: int = 90
+    control_hz: float = 50.0  # 控制周期频率，与 dataflow 中 mujoco 的 tick 间隔一致（如 50 → 20ms）
+    # 可选：输出任意对象的 2D 位姿（Pose2DList），按 {id: body_name} 配置
+    # - id: 下游识别用的唯一标识（推荐用 robot_id，但也可用自定义 id）
+    # - body_name: MuJoCo XML 中 body 的 name；若 id 恰好等于某个 robot_id，则允许使用该 robot 的 prefix 拼接
+    pose_2ds: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def control_period_sec(self) -> float:
+        """控制周期（秒），由 control_hz 推导。"""
+        return 1.0 / self.control_hz
 
     @property
     def camera_names(self) -> set[str]:
@@ -92,7 +118,61 @@ class MuJoCoNodeConfig:
             raise ValueError("model_path 不能为空")
 
         joints_raw = data.get("joints", [])
-        joints = [JointConfig(**j) for j in joints_raw]
+
+        derived_state_cfg: dict[str, DerivedActuatorStateConfig] = {}
+        joints: list[JointConfig] = []
+        for j in joints_raw:
+            if not isinstance(j, dict):
+                continue
+
+            # 提取派生状态相关字段（若存在）
+            state_from_joints = j.get("state_from_joints")
+            state_expr = j.get("state_expr")
+            state_scale = j.get("state_scale", 1.0)
+
+            if state_from_joints is not None:
+                # 规范化 joint 名列表
+                if not isinstance(state_from_joints, list):
+                    raise ValueError(
+                        f"state_from_joints 必须是字符串列表，当前: {state_from_joints}"
+                    )
+                joint_names = [str(name) for name in state_from_joints]
+
+                expr: Literal["diff", "sum"] | None
+                if state_expr is None:
+                    expr = None
+                else:
+                    if state_expr not in ("diff", "sum"):
+                        raise ValueError(
+                            f"state_expr 必须是 'diff' 或 'sum'，当前: {state_expr}"
+                        )
+                    expr = state_expr  # type: ignore[assignment]
+
+                try:
+                    scale = float(state_scale)
+                except Exception as exc:  # noqa: BLE001
+                    raise ValueError(
+                        f"state_scale 必须是数字，当前: {state_scale}"
+                    ) from exc
+
+                name = j.get("name")
+                if not name:
+                    raise ValueError(
+                        "带有 state_from_joints 的关节/执行器必须设置 name 字段"
+                    )
+                derived_state_cfg[str(name)] = DerivedActuatorStateConfig(
+                    joint_names=joint_names,
+                    state_expr=expr,
+                    state_scale=scale,
+                )
+
+            # 传给 JointConfig 的字段需要剥离派生配置，避免未知字段报错
+            cleaned = {
+                key: value
+                for key, value in j.items()
+                if key not in {"state_from_joints", "state_expr", "state_scale"}
+            }
+            joints.append(JointConfig(**cleaned))
 
         robots_raw = data.get("robots", [])
         robots: list[RobotConfig] = []
@@ -133,13 +213,33 @@ class MuJoCoNodeConfig:
         if image_jpeg_quality < 1 or image_jpeg_quality > 100:
             raise ValueError("image_jpeg_quality 必须在 [1, 100] 范围内")
 
+        control_hz = float(data.get("control_hz", 50.0))
+        if control_hz <= 0:
+            raise ValueError("control_hz 必须大于 0")
+
+        pose_2ds_raw = data.get("pose_2ds", {})
+        pose_2ds: dict[str, str] = {}
+        if pose_2ds_raw:
+            if not isinstance(pose_2ds_raw, dict):
+                raise ValueError("pose_2ds 必须是 {id: body_name} 的字典")
+            for k, v in pose_2ds_raw.items():
+                rk = str(k).strip()
+                rv = str(v).strip()
+                if not rk or not rv:
+                    continue
+                pose_2ds[rk] = rv
+        # pose_2d 输出口固定为 "pose_2d"
+
         return cls(
             model_path=model_path,
             joints=joints,
             robots=robots,
+            derived_state_cfg=derived_state_cfg,
             image_forward=image_forward,
             image_format=image_format,
             image_jpeg_quality=image_jpeg_quality,
+            control_hz=control_hz,
+            pose_2ds=pose_2ds,
         )
 
     @classmethod

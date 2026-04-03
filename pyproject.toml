@@ -6,9 +6,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "dora-rs>=0.4.1",
-    "forge-msgs",
-    "forge-simulators-mujoco",
+    "forge-common",
     "forge-configs",
+    "forge-msgs",
     "mujoco",
     "numpy",
     "opencv-python",
@@ -16,6 +16,6 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-forge-msgs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", subdirectory = "packages/msgs", rev = "dev" }
-forge-simulators-mujoco = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", subdirectory = "packages/simulators/mujoco", rev = "dev" }
+forge-common = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", rev = "dev", subdirectory = "packages/common" }
 forge-configs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", rev = "dev", subdirectory = "packages/configs" }
+forge-msgs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", subdirectory = "packages/msgs", rev = "dev" }

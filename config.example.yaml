@@ -5,8 +5,13 @@
 #   MUJOCO_GL=egl   - 无头 GPU 渲染（推荐）
 #   MUJOCO_GL=osmesa - 软件渲染（无 GPU，需 libOSMesa）
 #   MUJOCO_GL=glfw  - 需要显示器/窗口
+#
+# 时间与频率：control_hz 为控制周期频率，需与 dataflow 中 mujoco 的 tick 间隔一致（如 50Hz → 20ms）
 
 model_path: ./model.xml
+
+# 控制周期频率（Hz），缺省 50；与 dataflow 中 tick 间隔一致（50 → 20ms）
+control_hz: 50
 
 joints:
   - name: j1
@@ -18,6 +23,15 @@ joints:
   - name: j3
     mode: position
     unit: radians
+  # 例如：夹爪由两个 finger joint 合成，可使用派生配置：
+  # - name: gripper
+  #   mode: prismatic
+  #   unit: millimeters
+  #   # value_raw = qpos[finger_joint_1] - qpos[finger_joint_2]
+  #   # value = value_raw * state_scale （米 → 毫米）
+  #   state_from_joints: ["finger_joint_1", "finger_joint_2"]
+  #   state_expr: diff        # 或 sum
+  #   state_scale: 1000.0     # 缺省 1.0
 
 robots:
   - id: robot_0
@@ -31,6 +45,16 @@ robots:
 # image_jpeg_quality: JPEG 质量（1-100，仅 image_format=jpeg 时生效）
 image_format: raw
 image_jpeg_quality: 90
+
+# 可选：输出 2D 位姿（forge_msgs.Pose2DList），输出口固定为 "pose_2d"
+# 不写 pose_2ds 时，会按 robots[].prefix 自动识别每个 robot 的根 body 作为 pose_2d
+# pose_2ds: {id: body_name}
+# - id: 可为 robot_id 或任意自定义 id；若 id 等于 robot_id，会用该 robot 的 prefix 拼接 body_name
+# - body_name: MuJoCo XML 中 body 的 name
+# pose_2ds:
+#   robot_0: "base"
+#   robot_1: "root"
+#   goal: "nav_goal_marker"  # 自定义 id（建议写模型中完整 body name）
 
 image_forward:
   camera/main: { output: "image/main", fps: 30, width: 640, height: 480 }
