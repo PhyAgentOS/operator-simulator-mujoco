@@ -9,7 +9,7 @@ dependencies = [
     "forge-common",
     "forge-configs",
     "forge-msgs",
-    "mujoco",
+    "mujoco==3.3.7",
     "numpy",
     "opencv-python",
     "pyyaml>=6.0",
