@@ -19,6 +19,8 @@ class JointSpec:
 
     name: str
     mode: str = "position"
+    #: 若与 name 不同：MuJoCo 模型中的关节名后缀（prefix 后路径），如 robot_left/joint1
+    mj_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -31,6 +33,8 @@ class ActuatorSpec:
     min_value: float
     max_value: float
     unit: str = "radians"
+    #: 若与 name 不同：MuJoCo 模型中的 actuator 名后缀（prefix 后路径）
+    mj_name: str | None = None
 
 
 class MuJoCoSimulator:
@@ -69,7 +73,8 @@ class MuJoCoSimulator:
 
         for joint in self._joints:
             logical_name = joint.name
-            prefixed_name = prefix + logical_name
+            mj_suffix = joint.mj_name if joint.mj_name is not None else joint.name
+            prefixed_name = prefix + mj_suffix
             try:
                 joint_id = mujoco.mj_name2id(
                     model, mujoco.mjtObj.mjOBJ_JOINT, prefixed_name
@@ -91,7 +96,10 @@ class MuJoCoSimulator:
 
         for actuator in self._actuators:
             logical_name = actuator.name
-            prefixed_name = prefix + logical_name
+            mj_suffix = (
+                actuator.mj_name if actuator.mj_name is not None else actuator.name
+            )
+            prefixed_name = prefix + mj_suffix
             try:
                 act_id = mujoco.mj_name2id(
                     model, mujoco.mjtObj.mjOBJ_ACTUATOR, prefixed_name

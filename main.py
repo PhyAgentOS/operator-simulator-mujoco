@@ -15,6 +15,7 @@ from pathlib import Path
 if "MUJOCO_GL" not in os.environ:
     os.environ["MUJOCO_GL"] = "egl"
 
+from cv2 import log
 import mujoco
 import numpy as np
 from dora import Node
@@ -25,6 +26,7 @@ from config import MuJoCoNodeConfig, load_config
 from handlers import (
     build_proprio_state,
     build_robot_action,
+    master_state_arrow_parse_order,
     robot_state_to_robot_action,
     sim_state_to_robot_state,
 )
@@ -148,7 +150,9 @@ def _build_joints_and_actuators(
     for joint_name, actuator_name in robot_config.joint_to_actuator.items():
         spec = joint_specs.get(joint_name)
         mode = spec.mode if spec else "position"
-        joints.append(JointSpec(name=actuator_name, mode=mode))
+        # msgs 侧用短名 joint1；MuJoCo XML 常为 prefix/robot_left/joint1
+        mj_lookup = joint_name if joint_name != actuator_name else None
+        joints.append(JointSpec(name=actuator_name, mode=mode, mj_name=mj_lookup))
 
     actuators: list[ActuatorSpec] = []
     for i, actuator_name in enumerate(robot_config.actuator_order):
@@ -157,6 +161,11 @@ def _build_joints_and_actuators(
         unit = spec.unit if spec else "radians"
         mode = spec.mode if spec else "position"
         min_val, max_val = _actuator_limits(unit)
+        mj_lookup = (
+            joint_name
+            if joint_name is not None and joint_name != actuator_name
+            else None
+        )
         actuators.append(
             ActuatorSpec(
                 name=actuator_name,
@@ -165,6 +174,7 @@ def _build_joints_and_actuators(
                 min_value=min_val,
                 max_value=max_val,
                 unit=unit,
+                mj_name=mj_lookup,
             )
         )
     return joints, actuators
@@ -530,18 +540,13 @@ def main() -> int:
                                 None,
                             )
                             if robot_cfg:
-                                # 优先按 joint_to_actuator 的 joint 顺序解析（与 vr_device per-robot 输出一致）
-                                joint_parse_order = list(robot_cfg.joint_to_actuator.keys())
-                                state = RobotState.from_arrow(event["value"], joint_parse_order)
-                                robot_action = robot_state_to_robot_action(state, robot_cfg)
-                                # 兼容旧格式：若 joint-keyed 解析结果为空，再尝试 actuator 顺序解析
-                                if not robot_action.actuators:
-                                    state = RobotState.from_arrow(
-                                        event["value"], robot_cfg.actuator_order
-                                    )
-                                    robot_action = robot_state_to_robot_action(
-                                        state, robot_cfg
-                                    )
+                                parse_order = master_state_arrow_parse_order(
+                                    event["value"], robot_cfg
+                                )
+                                state = RobotState.from_arrow(event["value"], parse_order)
+                                robot_action = robot_state_to_robot_action(
+                                    state, robot_cfg
+                                )
                                 sim = simulators[target_robot_id]
                                 sim.set_action(robot_action)
 
