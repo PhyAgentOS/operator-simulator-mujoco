@@ -13,20 +13,32 @@ def master_state_arrow_parse_order(
     value: pa.RecordBatch | pa.Table | bytes,
     robot: RobotConfig,
 ) -> list[str]:
-    """为 master_state 的 RobotState.from_arrow 选择列名顺序。
+    """为 master_state 的 RobotState.from_arrow 选择 Arrow 列名（与 schema 一致、长度同 actuator_order）。
 
-    默认使用 actuator_order（短名 joint1…）；仅当 batch 中 joint 全名列命中数严格更多时，
-    使用 joint_to_actuator 的 key 顺序（与部分 vr_device per-robot 输出一致）。
+    上游常见两种表头：与 ``actuator_order`` 一致的 **actuator 短名**（如 joint1、gripper），
+    或与 ``joint_to_actuator`` 的 key 一致的 **MuJoCo/配置关节全路径**（如 robot_left/joint1）。
+    对每个自由度依次：若表中存在 actuator 列则用之（主路径，与 vr_device ``*/state`` 一致）；
+    否则若存在该自由度对应的 joint 列则用之；否则仍填 actuator 名，由 ``from_arrow`` 用默认 0。
+
+    ``RobotState.from_arrow`` 会用本列表的字符串既读列又写入 ``actuators`` 的 key；
+    ``robot_state_to_robot_action`` 已同时支持 actuator key 与 joint key。
     """
     batch = ensure_record_batch(value)
     names = set(batch.schema.names)
-    actuator_order = list(robot.actuator_order)
-    joint_keys = list(robot.joint_to_actuator.keys())
-    ao_hits = sum(1 for n in actuator_order if n in names)
-    jk_hits = sum(1 for n in joint_keys if n in names)
-    if jk_hits > ao_hits:
-        return joint_keys
-    return actuator_order
+    order: list[str] = []
+    for act_name in robot.actuator_order:
+        if act_name in names:
+            order.append(act_name)
+            continue
+        joint_name = next(
+            (j for j, a in robot.joint_to_actuator.items() if a == act_name),
+            None,
+        )
+        if joint_name is not None and joint_name in names:
+            order.append(joint_name)
+        else:
+            order.append(act_name)
+    return order
 
 
 def build_robot_action(action: Action, robot: RobotConfig) -> RobotAction:

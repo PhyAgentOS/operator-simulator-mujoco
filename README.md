@@ -124,6 +124,8 @@ uv run python main.py --config config.yaml
 - `MUJOCO_GL=osmesa`：软件渲染（需安装 libOSMesa）
 - `MUJOCO_GL=glfw`：需要显示器/窗口时使用
 
+说明：`main.py` 里对 `MUJOCO_GL` 的默认赋值**只影响本仿真进程**，不会改写其它 dora 节点（例如 `vr_device`）的环境。若在启动 dora 之前对 shell 做了 `export MUJOCO_GL=egl`，则所有子进程都会继承该值；此时若 `vr_device` 为 PyInstaller 单文件且依赖 MuJoCo 离屏加载，可能与 EGL/PyOpenGL 组合冲突，需对 `vr_device` 单独设置 `MUJOCO_GL=osmesa` 或 `glfw`。
+
 ## 依赖
 
 - `mujoco`：由本包直接依赖
