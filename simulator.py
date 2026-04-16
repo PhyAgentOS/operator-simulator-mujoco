@@ -75,10 +75,10 @@ class MuJoCoSimulator:
             logical_name = joint.name
             mj_suffix = joint.mj_name if joint.mj_name is not None else joint.name
             prefixed_name = prefix + mj_suffix
-            try:
-                joint_id = mujoco.mj_name2id(
-                    model, mujoco.mjtObj.mjOBJ_JOINT, prefixed_name
-                )
+            joint_id = mujoco.mj_name2id(
+                model, mujoco.mjtObj.mjOBJ_JOINT, prefixed_name
+            )
+            if joint_id >= 0:
                 qpos_addr = model.jnt_qposadr[joint_id]
                 self._qpos_addrs[logical_name] = qpos_addr
                 self._joint_qpos_addrs[logical_name] = qpos_addr
@@ -88,11 +88,17 @@ class MuJoCoSimulator:
                     prefixed_name,
                     qpos_addr,
                 )
-            except Exception:
-                logger.warning(
-                    "  - WARNING: Joint '%s' not found in mjModel.",
-                    prefixed_name,
-                )
+            else:
+                if derived_state_cfg and logical_name in derived_state_cfg:
+                    logger.info(
+                        "  - Joint '%s' is derived, skipping direct qpos mapping.",
+                        logical_name,
+                    )
+                else:
+                    logger.warning(
+                        "  - WARNING: Joint '%s' not found in mjModel.",
+                        prefixed_name,
+                    )
 
         for actuator in self._actuators:
             logical_name = actuator.name
@@ -100,10 +106,10 @@ class MuJoCoSimulator:
                 actuator.mj_name if actuator.mj_name is not None else actuator.name
             )
             prefixed_name = prefix + mj_suffix
-            try:
-                act_id = mujoco.mj_name2id(
-                    model, mujoco.mjtObj.mjOBJ_ACTUATOR, prefixed_name
-                )
+            act_id = mujoco.mj_name2id(
+                model, mujoco.mjtObj.mjOBJ_ACTUATOR, prefixed_name
+            )
+            if act_id >= 0:
                 self._ctrl_indices[logical_name] = act_id
                 logger.info(
                     "  - Mapped Actuator '%s' -> '%s' with ctrl_idx: %s",
@@ -111,7 +117,7 @@ class MuJoCoSimulator:
                     prefixed_name,
                     act_id,
                 )
-            except Exception:
+            else:
                 logger.warning(
                     "  - WARNING: Actuator '%s' not found in mjModel.",
                     prefixed_name,
@@ -134,10 +140,10 @@ class MuJoCoSimulator:
                         continue
 
                     prefixed_joint_name = prefix + j_name
-                    try:
-                        joint_id = mujoco.mj_name2id(
-                            model, mujoco.mjtObj.mjOBJ_JOINT, prefixed_joint_name
-                        )
+                    joint_id = mujoco.mj_name2id(
+                        model, mujoco.mjtObj.mjOBJ_JOINT, prefixed_joint_name
+                    )
+                    if joint_id >= 0:
                         qpos_addr = model.jnt_qposadr[joint_id]
                         self._joint_qpos_addrs[j_name] = qpos_addr
                         joint_qpos_addrs.append(qpos_addr)
@@ -147,7 +153,7 @@ class MuJoCoSimulator:
                             prefixed_joint_name,
                             qpos_addr,
                         )
-                    except Exception:
+                    else:
                         logger.warning(
                             "  - WARNING: DerivedState joint '%s' (prefixed '%s') "
                             "not found in mjModel.",
