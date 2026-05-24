@@ -397,7 +397,7 @@ def main() -> int:
                                 sim_state, robot
                             )
                         joint_state = build_joint_state(robot_states, config)
-                        node.send_output("joint_state", joint_state.to_arrow())
+                        node.send_output("proprio_state", joint_state.to_arrow())
 
                         # 可选：输出世界系位姿（PoseSet，按 robot_id keyed）
                         if pose_body_ids:
@@ -462,7 +462,7 @@ def main() -> int:
                         }
                         node.send_output("sim_status", json.dumps(status).encode("utf-8"))
 
-                    case "command":
+                    case "action":
                         command = JointCommand.from_arrow(event["value"])
                         for robot in config.robots:
                             robot_command = build_robot_command(command, robot)
