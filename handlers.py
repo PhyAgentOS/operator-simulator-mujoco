@@ -1,146 +1,133 @@
-"""Action -> RobotAction 与 RobotState -> ProprioState 转换逻辑。"""
+"""JointCommand/JointState conversion logic for MuJoCo."""
 
 from __future__ import annotations
 
-import pyarrow as pa
-from forge_msgs import Action, ActuatorValue, JointValue, ProprioState, RobotAction, RobotState
-from forge_msgs.value import ensure_record_batch
+from forge_msgs import JointCommand, JointState
 
 from config import MuJoCoNodeConfig, RobotConfig
 
 
-def master_state_arrow_parse_order(
-    value: pa.RecordBatch | pa.Table | bytes,
-    robot: RobotConfig,
-) -> list[str]:
-    """为 master_state 的 RobotState.from_arrow 选择 Arrow 列名（与 schema 一致、长度同 actuator_order）。
-
-    上游常见两种表头：与 ``actuator_order`` 一致的 **actuator 短名**（如 joint1、gripper），
-    或与 ``joint_to_actuator`` 的 key 一致的 **MuJoCo/配置关节全路径**（如 robot_left/joint1）。
-    对每个自由度依次：若表中存在 actuator 列则用之（主路径，与 vr_device ``*/state`` 一致）；
-    否则若存在该自由度对应的 joint 列则用之；否则仍填 actuator 名，由 ``from_arrow`` 用默认 0。
-
-    ``RobotState.from_arrow`` 会用本列表的字符串既读列又写入 ``actuators`` 的 key；
-    ``robot_state_to_robot_action`` 已同时支持 actuator key 与 joint key。
-    """
-    batch = ensure_record_batch(value)
-    names = set(batch.schema.names)
-    order: list[str] = []
-    for act_name in robot.actuator_order:
-        if act_name in names:
-            order.append(act_name)
-            continue
-        joint_name = next(
-            (j for j, a in robot.joint_to_actuator.items() if a == act_name),
-            None,
-        )
-        if joint_name is not None and joint_name in names:
-            order.append(joint_name)
-        else:
-            order.append(act_name)
-    return order
+def _values_by_name(message: JointCommand | JointState, field: str) -> dict[str, float]:
+    values = getattr(message, field)
+    if not values:
+        return {}
+    return dict(zip(message.name, values, strict=True))
 
 
-def build_robot_action(action: Action, robot: RobotConfig) -> RobotAction:
-    """根据 Action 和机器人配置，生成该机器人的 RobotAction。"""
-    actuators: dict[str, ActuatorValue] = {}
+def build_robot_command(command: JointCommand, robot: RobotConfig) -> JointCommand:
+    """Map global joint command names to this robot's actuator names."""
+
+    source = {
+        "position": _values_by_name(command, "position"),
+        "velocity": _values_by_name(command, "velocity"),
+        "effort": _values_by_name(command, "effort"),
+        "kp": _values_by_name(command, "kp"),
+        "kd": _values_by_name(command, "kd"),
+    }
+
+    names: list[str] = []
+    position: list[float] = []
+    velocity: list[float] = []
+    effort: list[float] = []
+    kp: list[float] = []
+    kd: list[float] = []
 
     for joint_name, actuator_name in robot.joint_to_actuator.items():
-        if joint_name in action.joints:
-            jv = action.joints[joint_name]
-            actuators[actuator_name] = ActuatorValue(
-                value=jv.value,
-                mode=jv.mode,
-                unit=jv.unit,
-            )
-        else:
-            actuators[actuator_name] = ActuatorValue(
-                value=0.0,
-                mode="position",
-                unit="radians",
-            )
+        names.append(actuator_name)
+        position.append(source["position"].get(joint_name, 0.0))
+        velocity.append(source["velocity"].get(joint_name, 0.0))
+        effort.append(source["effort"].get(joint_name, 0.0))
+        kp.append(source["kp"].get(joint_name, 0.0))
+        kd.append(source["kd"].get(joint_name, 0.0))
 
-    return RobotAction(actuators=actuators)
+    return JointCommand(
+        name=names,
+        position=position,
+        velocity=velocity,
+        effort=effort,
+        kp=kp,
+        kd=kd,
+    )
 
 
-def build_proprio_state(
-    robot_states: dict[str, RobotState],
+def build_joint_state(
+    robot_states: dict[str, JointState],
     config: MuJoCoNodeConfig,
-) -> ProprioState:
-    """将各机器人的 RobotState 聚合为 ProprioState。"""
-    joints: dict[str, JointValue] = {}
+) -> JointState:
+    """Aggregate per-robot actuator-keyed states into a global JointState."""
 
+    positions: dict[str, float] = {}
     for robot in config.robots:
         state = robot_states.get(robot.id)
         if not state:
             continue
 
+        values = _values_by_name(state, "position")
         actuator_to_joint = {v: k for k, v in robot.joint_to_actuator.items()}
-
-        for actuator_name, av in state.actuators.items():
+        for actuator_name, value in values.items():
             joint_name = actuator_to_joint.get(actuator_name)
             if joint_name is not None:
-                joints[joint_name] = JointValue(
-                    value=av.value,
-                    mode=av.mode,
-                    unit=av.unit,
-                )
+                positions[joint_name] = value
 
-    return ProprioState(joints=joints)
+    names = [name for name in config.joint_order if name in positions]
+    return JointState(
+        name=names,
+        position=[positions[name] for name in names],
+        velocity=[],
+        effort=[],
+    )
 
 
 def sim_state_to_robot_state(
-    sim_state: RobotState,
+    sim_state: JointState,
     robot: RobotConfig,
-) -> RobotState:
-    """
-    将 MuJoCoSimulator 返回的 joint-keyed RobotState 转为 actuator-keyed，
-    供 build_proprio_state 使用。
-    """
+) -> JointState:
+    """Normalize simulator state into actuator-keyed JointState."""
+
+    values = _values_by_name(sim_state, "position")
     actuator_to_joint = {v: k for k, v in robot.joint_to_actuator.items()}
-    actuators: dict[str, ActuatorValue] = {}
+    names: list[str] = []
+    position: list[float] = []
 
     for actuator_name in robot.actuator_order:
-        # 优先读取模型侧同名 actuator/joint（MuJoCo 内部常见）
-        if actuator_name in sim_state.actuators:
-            actuators[actuator_name] = sim_state.actuators[actuator_name]
+        if actuator_name in values:
+            names.append(actuator_name)
+            position.append(values[actuator_name])
             continue
-        # 兼容旧行为：读取 policy joint 名
         joint_name = actuator_to_joint.get(actuator_name)
-        if joint_name is not None and joint_name in sim_state.actuators:
-            actuators[actuator_name] = sim_state.actuators[joint_name]
+        if joint_name is not None and joint_name in values:
+            names.append(actuator_name)
+            position.append(values[joint_name])
 
-    return RobotState(actuators=actuators)
+    return JointState(name=names, position=position, velocity=[], effort=[])
 
 
-def robot_state_to_robot_action(
-    state: RobotState,
+def robot_state_to_robot_command(
+    state: JointState,
     robot: RobotConfig,
-) -> RobotAction:
-    """将 RobotState 转换为该机器人的 RobotAction。
+) -> JointCommand:
+    """Convert master JointState into actuator-keyed JointCommand."""
 
-    兼容两种输入格式：
-    1) state.actuators 使用 actuator 名称（默认）
-    2) state.actuators 使用 joint 名称（多臂场景常见），通过 joint_to_actuator 映射
-    """
-    actuators: dict[str, ActuatorValue] = {}
+    values = _values_by_name(state, "position")
     actuator_to_joint = {v: k for k, v in robot.joint_to_actuator.items()}
-    for name in robot.actuator_order:
-        if name in state.actuators:
-            av = state.actuators[name]
-            actuators[name] = ActuatorValue(
-                value=av.value,
-                mode=av.mode,
-                unit=av.unit,
-            )
+    names: list[str] = []
+    position: list[float] = []
+
+    for actuator_name in robot.actuator_order:
+        if actuator_name in values:
+            names.append(actuator_name)
+            position.append(values[actuator_name])
             continue
-        # 兼容 joint-name keyed RobotState
-        joint_name = actuator_to_joint.get(name)
-        if joint_name and joint_name in state.actuators:
-            av = state.actuators[joint_name]
-            actuators[name] = ActuatorValue(
-                value=av.value,
-                mode=av.mode,
-                unit=av.unit,
-            )
-    return RobotAction(actuators=actuators)
+        joint_name = actuator_to_joint.get(actuator_name)
+        if joint_name is not None and joint_name in values:
+            names.append(actuator_name)
+            position.append(values[joint_name])
+
+    return JointCommand(
+        name=names,
+        position=position,
+        velocity=[],
+        effort=[],
+        kp=[],
+        kd=[],
+    )

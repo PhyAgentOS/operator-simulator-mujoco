@@ -41,17 +41,17 @@ robots:
 
 # 相机输出配置：MuJoCo 模型中的 camera 名称 -> output_id 或 { output, fps }
 # 无 fps 时随 tick 输出。camera 名称需与模型 XML 中 camera 的 name 属性一致
-# image_format: raw（默认）或 jpeg/png，均输出 forge_msgs.Image（压缩时 encoding 为 jpeg/png）
+# image_format: raw 输出 forge_msgs.Image；jpeg/png 输出 forge_msgs.CompressedImage
 # image_jpeg_quality: JPEG 质量（1-100，仅 image_format=jpeg 时生效）
 image_format: raw
 image_jpeg_quality: 90
 
-# 可选：输出 2D 位姿（forge_msgs.Pose2DList），输出口固定为 "pose_2d"
-# 不写 pose_2ds 时，会按 robots[].prefix 自动识别每个 robot 的根 body 作为 pose_2d
-# pose_2ds: {id: body_name}
+# 可选：输出平面位姿（forge_msgs.PoseSet），输出口固定为 "pose_set"
+# 不写 pose_targets 时，会按 robots[].prefix 自动识别每个 robot 的根 body 作为 pose
+# pose_targets: {id: body_name}
 # - id: 可为 robot_id 或任意自定义 id；若 id 等于 robot_id，会用该 robot 的 prefix 拼接 body_name
 # - body_name: MuJoCo XML 中 body 的 name
-# pose_2ds:
+# pose_targets:
 #   robot_0: "base"
 #   robot_1: "root"
 #   goal: "nav_goal_marker"  # 自定义 id（建议写模型中完整 body name）

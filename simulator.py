@@ -1,4 +1,4 @@
-"""MuJoCo 仿真逻辑：接收 RobotAction，输出 RobotState。不依赖 forge_robots_core。"""
+"""MuJoCo simulation logic for JointCommand/JointState."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 
 import mujoco
 
-from forge_msgs import ActuatorValue, RobotAction, RobotState
+from forge_msgs import JointCommand, JointState
 from forge_common import get_logger
 
 logger = get_logger(__name__)
@@ -172,7 +172,7 @@ class MuJoCoSimulator:
 
     @property
     def actuator_order(self) -> list[str]:
-        """执行器名称顺序（用于 RobotState / RobotAction）。"""
+        """执行器名称顺序（用于 JointState / JointCommand）。"""
         return [a.name for a in self._actuators]
 
     def reset(self) -> None:
@@ -182,10 +182,11 @@ class MuJoCoSimulator:
         self._data.qvel[:] = 0
         logger.debug("[MuJoCoSimulator] Reset to initial state")
 
-    def get_state(self) -> RobotState:
-        """从 MuJoCo 读取状态，返回 RobotState（弧度/毫米）。"""
+    def get_state(self) -> JointState:
+        """从 MuJoCo 读取状态，返回 JointState（弧度/毫米）。"""
         qpos = self._data.qpos
-        actuator_values: dict[str, ActuatorValue] = {}
+        names: list[str] = []
+        position: list[float] = []
 
         for logical_name, addr in self._qpos_addrs.items():
             actuator = self._actuator_map.get(logical_name)
@@ -209,11 +210,9 @@ class MuJoCoSimulator:
             else:
                 report_unit = "radians"
                 value = float(qpos_value)
-            actuator_values[logical_name] = ActuatorValue(
-                value=value,
-                mode="position",
-                unit=report_unit,
-            )
+            _ = report_unit
+            names.append(logical_name)
+            position.append(value)
 
         for act_name, cfg in self._derived_state_cfg.items():
             joint_qpos_addrs = cfg.get("joint_qpos_addrs", [])
@@ -244,20 +243,22 @@ class MuJoCoSimulator:
                 mode = "position"
                 unit = "radians"
 
-            actuator_values[act_name] = ActuatorValue(
-                value=value,
-                mode=mode,
-                unit=unit,
-            )
+            _ = (mode, unit)
+            names.append(act_name)
+            position.append(value)
 
-        return RobotState(actuators=actuator_values)
+        return JointState(name=names, position=position, velocity=[], effort=[])
 
-    def set_action(self, action: RobotAction) -> None:
-        """下发 RobotAction（弧度/毫米），内部裁剪到限位后写入 ctrl。"""
-        safe_action = self._get_safe_action(action)
+    def set_command(self, command: JointCommand) -> None:
+        """下发 JointCommand（弧度/毫米），内部裁剪到限位后写入 ctrl。"""
+        safe_command = self._get_safe_command(command)
         ctrl = self._data.ctrl
 
-        for logical_name, act_val in safe_action.actuators.items():
+        position = dict(zip(safe_command.name, safe_command.position, strict=True)) if safe_command.position else {}
+        velocity = dict(zip(safe_command.name, safe_command.velocity, strict=True)) if safe_command.velocity else {}
+        effort = dict(zip(safe_command.name, safe_command.effort, strict=True)) if safe_command.effort else {}
+
+        for logical_name in safe_command.name:
             actuator = self._actuator_map.get(logical_name)
             if not actuator:
                 logger.warning(
@@ -282,26 +283,58 @@ class MuJoCoSimulator:
                 continue
 
             ctrl_index = self._ctrl_indices[logical_name]
+            if actuator.control_mode == "velocity":
+                value = velocity.get(logical_name, position.get(logical_name, 0.0))
+            elif actuator.control_mode == "effort":
+                value = effort.get(logical_name, position.get(logical_name, 0.0))
+            else:
+                value = position.get(logical_name, 0.0)
+
             # 长度单位统一为米写入 ctrl；角度/角速度（radians、radians/s）原样写入
-            if act_val.unit in ("millimeters", "millimeters/s"):
-                ctrl[ctrl_index] = act_val.value / 1000.0
+            if actuator.unit in ("millimeters", "millimeters/s"):
+                ctrl[ctrl_index] = value / 1000.0
             else:
                 # position(rad)、velocity(rad/s) 等与 MuJoCo 一致，直接赋值（如速度 1 -> ctrl=1）
-                ctrl[ctrl_index] = act_val.value
+                ctrl[ctrl_index] = value
 
-    def _get_safe_action(self, action: RobotAction) -> RobotAction:
-        """按执行器限位裁剪 action。"""
-        safe_actuators = {}
-        for name, act_val in action.actuators.items():
+    def _get_safe_command(self, command: JointCommand) -> JointCommand:
+        """按执行器限位裁剪 command。"""
+        source = {
+            "position": dict(zip(command.name, command.position, strict=True)) if command.position else {},
+            "velocity": dict(zip(command.name, command.velocity, strict=True)) if command.velocity else {},
+            "effort": dict(zip(command.name, command.effort, strict=True)) if command.effort else {},
+            "kp": dict(zip(command.name, command.kp, strict=True)) if command.kp else {},
+            "kd": dict(zip(command.name, command.kd, strict=True)) if command.kd else {},
+        }
+        names: list[str] = []
+        position: list[float] = []
+        velocity: list[float] = []
+        effort: list[float] = []
+        kp: list[float] = []
+        kd: list[float] = []
+
+        for name in command.name:
             actuator = self._actuator_map.get(name)
             if not actuator:
                 continue
-            clipped_val = max(
-                min(act_val.value, actuator.max_value), actuator.min_value
-            )
-            safe_actuators[name] = ActuatorValue(
-                value=clipped_val,
-                mode=act_val.mode,
-                unit=act_val.unit,
-            )
-        return RobotAction(actuators=safe_actuators)
+            names.append(name)
+            for field, target in (
+                ("position", position),
+                ("velocity", velocity),
+                ("effort", effort),
+                ("kp", kp),
+                ("kd", kd),
+            ):
+                value = source[field].get(name, 0.0)
+                if field in {"position", "velocity", "effort"}:
+                    value = max(min(value, actuator.max_value), actuator.min_value)
+                target.append(value)
+
+        return JointCommand(
+            name=names,
+            position=position,
+            velocity=velocity,
+            effort=effort,
+            kp=kp,
+            kd=kd,
+        )

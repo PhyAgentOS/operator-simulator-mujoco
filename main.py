@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MuJoCo dora-rs 节点：接收 tick 驱动仿真，接收 Action 控制 ctrl，输出 ProprioState 和相机图像。"""
+"""MuJoCo dora-rs node for JointCommand/JointState simulation."""
 
 from __future__ import annotations
 
@@ -7,27 +7,28 @@ import argparse
 import json
 import math
 import os
+import platform
 import sys
 from pathlib import Path
 
-# 渲染后端：须在 import mujoco 之前设置。默认 egl 便于无显示器/SSH/服务器；
-# 若需 GLFW 窗口可设 MUJOCO_GL=glfw；纯软件渲染可设 MUJOCO_GL=osmesa（需 libOSMesa）。
+# 渲染后端：须在 import mujoco 之前设置。
+# Linux 默认 egl 便于无显示器/SSH/服务器；Windows 不支持 egl，默认 glfw。
+# 纯软件渲染可手动设 MUJOCO_GL=osmesa（需 libOSMesa）。
 if "MUJOCO_GL" not in os.environ:
-    os.environ["MUJOCO_GL"] = "egl"
+    os.environ["MUJOCO_GL"] = "glfw" if platform.system() == "Windows" else "egl"
 
 from cv2 import log
 import mujoco
 import numpy as np
 from dora import Node
-from forge_msgs import Action, Image, Pose2D, Pose2DList, RobotState
+from forge_msgs import CompressedImage, Image, JointCommand, JointState, Pose, PoseSet
 from forge_common import get_logger
 
 from config import MuJoCoNodeConfig, load_config
 from handlers import (
-    build_proprio_state,
-    build_robot_action,
-    master_state_arrow_parse_order,
-    robot_state_to_robot_action,
+    build_joint_state,
+    build_robot_command,
+    robot_state_to_robot_command,
     sim_state_to_robot_state,
 )
 from simulator import ActuatorSpec, JointSpec, MuJoCoSimulator
@@ -194,10 +195,10 @@ def _build_image_payload(
     height, width = int(pixels.shape[0]), int(pixels.shape[1])
     if config.image_format == "raw":
         return Image(
-            width=width,
             height=height,
-            channels=3,
+            width=width,
             encoding="rgb8",
+            step=width * 3,
             data=pixels.tobytes(),
         ).to_arrow()
 
@@ -215,24 +216,12 @@ def _build_image_payload(
         )
         if not ok:
             raise RuntimeError("JPEG 编码失败")
-        return Image(
-            width=width,
-            height=height,
-            channels=0,
-            encoding="jpeg",
-            data=encoded.tobytes(),
-        ).to_arrow()
+        return CompressedImage(format="jpeg", data=encoded.tobytes()).to_arrow()
 
     ok, encoded = cv2.imencode(".png", bgr)
     if not ok:
         raise RuntimeError("PNG 编码失败")
-    return Image(
-        width=width,
-        height=height,
-        channels=0,
-        encoding="png",
-        data=encoded.tobytes(),
-    ).to_arrow()
+    return CompressedImage(format="png", data=encoded.tobytes()).to_arrow()
 
 
 def main() -> int:
@@ -274,14 +263,14 @@ def main() -> int:
         )
         simulators[robot.id] = sim
 
-    # 解析 pose_2d 的 body id（若配置了 pose_2ds）：缓存 {id -> body_id}
-    pose_2d_body_ids: dict[str, int] = {}
-    if config.pose_2ds:
+    # 解析 pose_set 的 body id（若配置了 pose_targets）：缓存 {id -> body_id}
+    pose_body_ids: dict[str, int] = {}
+    if config.pose_targets:
         robot_prefix_by_id = {r.id: (r.prefix or "") for r in config.robots}
         targets: dict[str, str] = {}
 
-        # 用 pose_2ds 配置任意 id 的目标（若 id 匹配 robot_id，则使用该 robot 的 prefix 拼接）
-        for tid, body_cfg in config.pose_2ds.items():
+        # 用 pose_targets 配置任意 id 的目标（若 id 匹配 robot_id，则使用该 robot 的 prefix 拼接）
+        for tid, body_cfg in config.pose_targets.items():
             prefix = robot_prefix_by_id.get(tid, "")
             body_name = _resolve_mujoco_body_name(prefix, body_cfg)
             if body_name:
@@ -291,38 +280,38 @@ def main() -> int:
         for tid, body_name in targets.items():
             body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
             if body_id >= 0:
-                pose_2d_body_ids[tid] = body_id
+                pose_body_ids[tid] = body_id
                 logger.info(
-                    "[mujoco] pose_2d id=%s 使用 body %s (id=%s)",
+                    "[mujoco] pose_set id=%s 使用 body %s (id=%s)",
                     tid,
                     body_name,
                     body_id,
                 )
             else:
                 logger.warning(
-                    "[mujoco] pose_2d body '%s' 在模型中未找到（id=%s），将跳过该 id 的 pose_2d",
+                    "[mujoco] pose_set body '%s' 在模型中未找到（id=%s），将跳过该 id 的 pose",
                     body_name,
                     tid,
                 )
 
-    # 未在 pose_2ds 中配置的 robot：按 prefix 自动识别该子树根 body 作为 pose_2d
+    # 未在 pose_targets 中配置的 robot：按 prefix 自动识别该子树根 body 作为 pose
     for robot in config.robots:
-        if robot.id in pose_2d_body_ids:
+        if robot.id in pose_body_ids:
             continue
         prefix = robot.prefix or ""
         body_id = _find_root_body_under_prefix(model, prefix)
         if body_id is not None:
-            pose_2d_body_ids[robot.id] = body_id
+            pose_body_ids[robot.id] = body_id
             body_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, body_id) or ""
             logger.info(
-                "[mujoco] pose_2d id=%s 自动识别 body %s (id=%s)",
+                "[mujoco] pose_set id=%s 自动识别 body %s (id=%s)",
                 robot.id,
                 body_name,
                 body_id,
             )
         else:
             logger.debug(
-                "[mujoco] pose_2d id=%s 未配置且 prefix=%r 下未找到根 body，跳过",
+                "[mujoco] pose_set id=%s 未配置且 prefix=%r 下未找到根 body，跳过",
                 robot.id,
                 prefix,
             )
@@ -363,7 +352,7 @@ def main() -> int:
 
     node = Node()
 
-    # 仿真状态机：默认沿用现有行为直接 RUNNING，便于不接 sim_control 时保持兼容
+    # 仿真器不接收 policy control；默认 RUNNING，是否启停由上游 policy/dataflow 决定。
     sim_mode = "RUNNING"
     sim_time = 0.0
     current_step = 0
@@ -375,55 +364,6 @@ def main() -> int:
                 input_id = event["id"]
 
                 match input_id:
-                    case "sim_control":
-                        # 解析来自 control_gateway 的控制指令（仅支持 Arrow SimControl）
-                        action: str | None = None
-                        raw = event.get("value")
-                        try:
-                            from forge_msgs import SimControl  # 局部导入以避免循环依赖
-
-                            ctrl = SimControl.from_arrow(raw)
-                        except Exception as e:
-                            ctrl = None
-
-                        if ctrl is not None:
-                            action = ctrl.action
-                        else:
-                            print(f"[mujoco] SimControl.from_arrow 解析失败，忽略控制指令，value_type={type(raw)}", file=sys.stderr)
-                            action = None
-
-                        if action == "START":
-                            if sim_mode in ("UNINITIALIZED", "STOPPED"):
-                                current_step = 0
-                                sim_time = 0.0
-                                episode_index += 1
-                                for k in next_camera_time:
-                                    next_camera_time[k] = 0.0
-                            sim_mode = "RUNNING"
-                        elif action == "PAUSE" and sim_mode == "RUNNING":
-                            sim_mode = "PAUSED"
-                        elif action == "RESUME" and sim_mode == "PAUSED":
-                            sim_mode = "RUNNING"
-                        elif action == "RESET":
-                            mujoco.mj_resetData(model, data)
-                            current_step = 0
-                            sim_time = 0.0
-                            episode_index += 1
-                            for k in next_camera_time:
-                                next_camera_time[k] = 0.0
-                            sim_mode = "RUNNING"
-                        elif action == "STOP":
-                            sim_mode = "STOPPED"
-
-                        status = {
-                            "status_name": sim_mode,
-                            "status_code": SIM_STATUS_CODE.get(sim_mode, -1),
-                            "current_step": current_step,
-                            "episode_index": episode_index,
-                            "sim_time": sim_time,
-                        }
-                        node.send_output("sim_status", json.dumps(status).encode("utf-8"))
-
                     case "tick":
                         if sim_mode != "RUNNING":
                             # 完全暂停：不步进、不更新图像，只更新 status 由上层按需处理
@@ -449,32 +389,30 @@ def main() -> int:
                         current_step += n_steps
 
                         # 每 tick 输出一次 state
-                        robot_states: dict[str, object] = {}
+                        robot_states: dict[str, JointState] = {}
                         for robot in config.robots:
                             sim = simulators[robot.id]
                             sim_state = sim.get_state()
                             robot_states[robot.id] = sim_state_to_robot_state(
                                 sim_state, robot
                             )
-                        proprio_state = build_proprio_state(robot_states, config)
-                        node.send_output(
-                            "proprio_state", proprio_state.to_arrow(config.joint_order)
-                        )
+                        joint_state = build_joint_state(robot_states, config)
+                        node.send_output("joint_state", joint_state.to_arrow())
 
-                        # 可选：输出世界系 2D 位姿（Pose2DList，按 robot_id keyed）
-                        if pose_2d_body_ids:
-                            poses: dict[str, Pose2D] = {}
-                            for rid, bid in pose_2d_body_ids.items():
+                        # 可选：输出世界系位姿（PoseSet，按 robot_id keyed）
+                        if pose_body_ids:
+                            poses: dict[str, Pose] = {}
+                            for rid, bid in pose_body_ids.items():
                                 x, y = float(data.xpos[bid][0]), float(data.xpos[bid][1])
                                 q = data.xquat[bid]
                                 theta = math.atan2(
                                     2.0 * (q[0] * q[3] + q[1] * q[2]),
                                     1.0 - 2.0 * (q[2] ** 2 + q[3] ** 2),
                                 )
-                                poses[rid] = Pose2D(x=x, y=y, theta=theta)
+                                poses[rid] = Pose.from_xy_yaw(x=x, y=y, yaw=theta)
 
                             if poses:
-                                node.send_output("pose_2d", Pose2DList(poses=poses).to_arrow())
+                                node.send_output("pose_set", PoseSet.from_poses(poses).to_arrow())
 
                         # 相机按 sim_time 节流
                         if renderer is not None:
@@ -524,12 +462,12 @@ def main() -> int:
                         }
                         node.send_output("sim_status", json.dumps(status).encode("utf-8"))
 
-                    case "action":
-                        action = Action.from_arrow(event["value"], config.joint_order)
+                    case "command":
+                        command = JointCommand.from_arrow(event["value"])
                         for robot in config.robots:
-                            robot_action = build_robot_action(action, robot)
+                            robot_command = build_robot_command(command, robot)
                             sim = simulators[robot.id]
-                            sim.set_action(robot_action)
+                            sim.set_command(robot_command)
 
                     case _:
                         # 处理动态 ID 映射，例如 "robot_0/master_state"
@@ -540,15 +478,12 @@ def main() -> int:
                                 None,
                             )
                             if robot_cfg:
-                                parse_order = master_state_arrow_parse_order(
-                                    event["value"], robot_cfg
-                                )
-                                state = RobotState.from_arrow(event["value"], parse_order)
-                                robot_action = robot_state_to_robot_action(
+                                state = JointState.from_arrow(event["value"])
+                                robot_command = robot_state_to_robot_command(
                                     state, robot_cfg
                                 )
                                 sim = simulators[target_robot_id]
-                                sim.set_action(robot_action)
+                                sim.set_command(robot_command)
 
             case "STOP":
                 break
@@ -567,4 +502,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(0)
