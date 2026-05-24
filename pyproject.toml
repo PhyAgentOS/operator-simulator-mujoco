@@ -7,7 +7,6 @@ requires-python = ">=3.11"
 dependencies = [
     "dora-rs==0.4.1",
     "forge-common",
-    "forge-configs",
     "forge-msgs",
     "mujoco==3.3.7",
     "numpy",
@@ -17,5 +16,4 @@ dependencies = [
 
 [tool.uv.sources]
 forge-common = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", rev = "dev", subdirectory = "packages/common" }
-forge-configs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", rev = "dev", subdirectory = "packages/configs" }
-forge-msgs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", subdirectory = "packages/msgs", rev = "dev" }
+forge-msgs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", subdirectory = "packages/msgs", rev = "refactor/msg" }

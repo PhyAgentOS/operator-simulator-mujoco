@@ -7,8 +7,27 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from forge_configs.robot import JointConfig
 import yaml
+
+
+@dataclass(init=False)
+class JointConfig:
+    """Minimal joint configuration used by the MuJoCo runtime node."""
+
+    name: str
+    mode: str
+    unit: str
+
+    def __init__(
+        self,
+        name: str,
+        mode: str = "position",
+        unit: str = "radians",
+        **_: Any,
+    ) -> None:
+        self.name = name
+        self.mode = mode
+        self.unit = unit
 
 
 @dataclass
