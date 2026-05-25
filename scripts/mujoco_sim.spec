@@ -4,10 +4,11 @@
 import os
 
 _spec_dir = os.path.dirname(os.path.abspath(SPEC))
+_node_dir = os.path.dirname(_spec_dir)
 
 a = Analysis(
-    [os.path.join(_spec_dir, 'main.py')],
-    pathex=[],
+    [os.path.join(_node_dir, 'main.py')],
+    pathex=[_node_dir],
     binaries=[],
     datas=[],
     hiddenimports=['OpenGL.platform.egl', 'OpenGL.EGL'],
@@ -40,4 +41,3 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
 )
-
