@@ -352,7 +352,7 @@ def main() -> int:
 
     node = Node()
 
-    # 仿真器不接收 policy control；默认 RUNNING，是否启停由上游 policy/dataflow 决定。
+    # 默认 RUNNING；高层 runtime 控制通过 task_robot 转为 sim_command。
     sim_mode = "RUNNING"
     sim_time = 0.0
     current_step = 0
@@ -364,6 +364,35 @@ def main() -> int:
                 input_id = event["id"]
 
                 match input_id:
+                    case "sim_command":
+                        try:
+                            payload = json.loads(bytes(event["value"]).decode("utf-8"))
+                        except Exception as e:
+                            logger.warning("[mujoco] 解析 sim_command 失败: %s", e)
+                            continue
+
+                        command = payload.get("command") if isinstance(payload, dict) else None
+                        if command == "reset_scene":
+                            sim_mode = "RESETTING"
+                            mujoco.mj_resetData(model, data)
+                            data.ctrl[:] = 0
+                            mujoco.mj_forward(model, data)
+                            sim_time = 0.0
+                            current_step = 0
+                            episode_index += 1
+                            next_camera_time = {name: 0.0 for name in config.camera_names}
+                            status = {
+                                "status_name": sim_mode,
+                                "status_code": SIM_STATUS_CODE.get(sim_mode, -1),
+                                "current_step": current_step,
+                                "episode_index": episode_index,
+                                "sim_time": sim_time,
+                            }
+                            node.send_output("sim_status", json.dumps(status).encode("utf-8"))
+                            sim_mode = "RUNNING"
+                        else:
+                            logger.debug("[mujoco] 忽略未知 sim_command: %r", command)
+
                     case "tick":
                         if sim_mode != "RUNNING":
                             # 完全暂停：不步进、不更新图像，只更新 status 由上层按需处理
