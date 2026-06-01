@@ -106,6 +106,7 @@ class MuJoCoNodeConfig:
         default_factory=dict
     )
     image_forward: dict[str, CameraConfig] = field(default_factory=dict)
+    depth_forward: dict[str, CameraConfig] = field(default_factory=dict)
     image_format: Literal["raw", "jpeg", "png"] = "raw"
     image_jpeg_quality: int = 90
     control_hz: float = 50.0  # 控制周期频率，与 dataflow 中 mujoco 的 tick 间隔一致（如 50 → 20ms）
@@ -122,7 +123,7 @@ class MuJoCoNodeConfig:
     @property
     def camera_names(self) -> set[str]:
         """需输出的相机名称集合。"""
-        return set(self.image_forward.keys())
+        return set(self.image_forward.keys()) | set(self.depth_forward.keys())
 
     @property
     def joint_order(self) -> list[str]:
@@ -223,6 +224,14 @@ class MuJoCoNodeConfig:
         for cam_name, val in image_forward_raw.items():
             image_forward[cam_name] = _parse_image_forward(val)
 
+        depth_forward_raw = data.get("depth_forward", {})
+        if not isinstance(depth_forward_raw, dict):
+            depth_forward_raw = {}
+
+        depth_forward: dict[str, CameraConfig] = {}
+        for cam_name, val in depth_forward_raw.items():
+            depth_forward[cam_name] = _parse_image_forward(val)
+
         image_format = data.get("image_format", "raw")
         if image_format not in {"raw", "jpeg", "png"}:
             raise ValueError(
@@ -255,6 +264,7 @@ class MuJoCoNodeConfig:
             robots=robots,
             derived_state_cfg=derived_state_cfg,
             image_forward=image_forward,
+            depth_forward=depth_forward,
             image_format=image_format,
             image_jpeg_quality=image_jpeg_quality,
             control_hz=control_hz,

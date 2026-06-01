@@ -224,6 +224,48 @@ def _build_image_payload(
     return CompressedImage(format="png", data=encoded.tobytes()).to_arrow()
 
 
+def _build_depth_payload(depth_m: np.ndarray):
+    """将 MuJoCo 深度图转为 float32 meters 的 Image（encoding=32FC1）。"""
+    depth32 = np.ascontiguousarray(depth_m, dtype=np.float32)
+    return Image.from_numpy(depth32, encoding="32FC1").to_arrow()
+
+
+def _render_color_payload(
+    renderer,
+    data: mujoco.MjData,
+    camera: str,
+    config: MuJoCoNodeConfig,
+    cv2_module: object | None,
+):
+    """渲染 RGB 图像。Renderer 可能刚渲染过 depth，因此这里显式切回 RGB 模式。"""
+    renderer.disable_depth_rendering()
+    renderer.update_scene(data, camera=camera)
+    pixels = renderer.render()
+    return _build_image_payload(pixels, config, cv2_module)
+
+
+def _render_depth_payload(renderer, data: mujoco.MjData, camera: str):
+    """渲染深度图。MuJoCo Renderer depth 输出单位为 meters。"""
+    renderer.enable_depth_rendering()
+    renderer.update_scene(data, camera=camera)
+    depth_m = renderer.render()
+    return _build_depth_payload(depth_m)
+
+
+def _should_emit_camera(
+    sim_time: float,
+    next_camera_time: dict[str, float],
+    key: str,
+    fps: float | None,
+) -> bool:
+    if fps is None:
+        return True
+    if sim_time < next_camera_time[key]:
+        return False
+    next_camera_time[key] += 1.0 / fps
+    return True
+
+
 def main() -> int:
     args = _parse_args()
     config = load_config(config_path=args.config)
@@ -318,10 +360,10 @@ def main() -> int:
 
     # 相机渲染器（如有配置）
     renderer = None
-    if config.image_forward:
+    if config.camera_names:
         # 如果有相机配置了宽高，则统一使用第一组非空宽高；否则使用默认 480x640
         render_height, render_width = 480, 640
-        for cam_cfg in config.image_forward.values():
+        for cam_cfg in [*config.image_forward.values(), *config.depth_forward.values()]:
             if cam_cfg.width is not None and cam_cfg.height is not None:
                 render_width = int(cam_cfg.width)
                 render_height = int(cam_cfg.height)
@@ -345,7 +387,11 @@ def main() -> int:
             return 1
 
     # 相机按仿真时间节流：下次应输出帧的 sim_time
-    next_camera_time: dict[str, float] = {name: 0.0 for name in config.camera_names}
+    next_camera_time: dict[str, float] = {
+        f"image:{name}": 0.0 for name in config.image_forward
+    } | {
+        f"depth:{name}": 0.0 for name in config.depth_forward
+    }
 
     control_period_sec = config.control_period_sec
     physics_dt = float(model.opt.timestep)
@@ -380,7 +426,11 @@ def main() -> int:
                             sim_time = 0.0
                             current_step = 0
                             episode_index += 1
-                            next_camera_time = {name: 0.0 for name in config.camera_names}
+                            next_camera_time = {
+                                f"image:{name}": 0.0 for name in config.image_forward
+                            } | {
+                                f"depth:{name}": 0.0 for name in config.depth_forward
+                            }
                             status = {
                                 "status_name": sim_mode,
                                 "status_code": SIM_STATUS_CODE.get(sim_mode, -1),
@@ -446,39 +496,34 @@ def main() -> int:
                         # 相机按 sim_time 节流
                         if renderer is not None:
                             for cam_name, cam_config in config.image_forward.items():
+                                camera_key = f"image:{cam_name}"
                                 output_id = cam_config.output_id
-                                if cam_config.fps is not None:
-                                    cam_period = 1.0 / cam_config.fps
-                                    while sim_time >= next_camera_time[cam_name]:
-                                        next_camera_time[cam_name] += cam_period
-                                        try:
-                                            renderer.update_scene(
-                                                data, camera=cam_name
-                                            )
-                                            pixels = renderer.render()
-                                            payload = _build_image_payload(
-                                                pixels, config, cv2_module
-                                            )
-                                            node.send_output(output_id, payload)
-                                        except Exception as e:
-                                            print(
-                                                f"[mujoco] 渲染相机 {cam_name} 失败: {e}",
-                                                file=sys.stderr,
-                                            )
-                                else:
-                                    # 无 fps 时随 tick 输出一帧
+                                if _should_emit_camera(
+                                    sim_time, next_camera_time, camera_key, cam_config.fps
+                                ):
                                     try:
-                                        renderer.update_scene(
-                                            data, camera=cam_name
-                                        )
-                                        pixels = renderer.render()
-                                        payload = _build_image_payload(
-                                            pixels, config, cv2_module
+                                        payload = _render_color_payload(
+                                            renderer, data, cam_name, config, cv2_module
                                         )
                                         node.send_output(output_id, payload)
                                     except Exception as e:
                                         print(
                                             f"[mujoco] 渲染相机 {cam_name} 失败: {e}",
+                                            file=sys.stderr,
+                                        )
+
+                            for cam_name, cam_config in config.depth_forward.items():
+                                camera_key = f"depth:{cam_name}"
+                                output_id = cam_config.output_id
+                                if _should_emit_camera(
+                                    sim_time, next_camera_time, camera_key, cam_config.fps
+                                ):
+                                    try:
+                                        payload = _render_depth_payload(renderer, data, cam_name)
+                                        node.send_output(output_id, payload)
+                                    except Exception as e:
+                                        print(
+                                            f"[mujoco] 渲染深度相机 {cam_name} 失败: {e}",
                                             file=sys.stderr,
                                         )
 

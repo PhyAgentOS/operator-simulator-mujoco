@@ -22,6 +22,7 @@ MuJoCo 节点属于 robot+sensor 层的仿真实现：接收 `JointCommand`，�
 - `proprio_state`: `forge_msgs.JointState`，全局关节状态。
 - `pose_set`: `forge_msgs.PoseSet`，可选，平面位姿通过 `Pose.from_xy_yaw` 表示。
 - `image/*`: raw 图像使用 `forge_msgs.Image`，jpeg/png 使用 `forge_msgs.CompressedImage`。
+- `depth/*`: 深度图使用 `forge_msgs.Image`，固定 `encoding=32FC1`，数据类型 `float32`，单位 meters。
 - `sim_status`: 仿真进度 JSON，仅反映本节点内部 step/time 状态，不作为外部控制接口。
 
 ## 配置
@@ -58,6 +59,24 @@ pose_targets:
 
 如果不写 `pose_targets`，节点会尝试按 `robots[].prefix` 自动识别每个 robot 的根 body。
 
+### 深度图输出
+
+`depth_forward` 与 `image_forward` 类似，key 是 MuJoCo XML 中的 camera 名称，value 是输出 topic 配置。深度图用于 mask 区域反投影 3D 点，因此输出契约固定为米制 float32：
+
+```yaml
+depth_forward:
+  top: { output: "depth/top", fps: 30, width: 640, height: 480 }
+```
+
+输出 payload 为 `forge_msgs.Image`：
+
+- `encoding`: `32FC1`
+- `dtype`: `float32`
+- `unit`: meters
+- `shape`: `(height, width)`
+
+真机 RealSense 节点建议把原始 `z16` 深度在 camera 节点内根据 `depth_scale` 转成 meters 后，也输出同样的 `32FC1` 契约，避免 policy 侧再关心相机厂商和 scale。
+
 ## 运行
 
 ```yaml
@@ -70,6 +89,7 @@ pose_targets:
     - proprio_state
     - pose_set
     - image/main
+    - depth/top
   config:
     config_path: ./packages/nodes/simulators/mujoco/config.yaml
 ```
