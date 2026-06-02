@@ -24,7 +24,7 @@ from dora import Node
 from forge_msgs import CompressedImage, Image, JointCommand, JointState, Pose, PoseSet
 from forge_common import get_logger
 
-from config import MuJoCoNodeConfig, load_config
+from config import CameraConfig, MuJoCoNodeConfig, load_config
 from handlers import (
     build_joint_state,
     build_robot_command,
@@ -266,6 +266,19 @@ def _should_emit_camera(
     return True
 
 
+def _camera_output_key(cam_name: str, cam_config: CameraConfig) -> str:
+    """同一 camera 可输出多路图像，因此节流 key 需要包含输出 topic。"""
+    return f"{cam_config.image_type}:{cam_name}:{cam_config.output_id}"
+
+
+def _initial_camera_times(config: MuJoCoNodeConfig) -> dict[str, float]:
+    """初始化每路图像输出的下一帧时间。"""
+    return {
+        _camera_output_key(cam_name, cam_config): 0.0
+        for cam_name, cam_config in config.camera_outputs
+    }
+
+
 def main() -> int:
     args = _parse_args()
     config = load_config(config_path=args.config)
@@ -363,7 +376,7 @@ def main() -> int:
     if config.camera_names:
         # 如果有相机配置了宽高，则统一使用第一组非空宽高；否则使用默认 480x640
         render_height, render_width = 480, 640
-        for cam_cfg in [*config.image_forward.values(), *config.depth_forward.values()]:
+        for _, cam_cfg in config.camera_outputs:
             if cam_cfg.width is not None and cam_cfg.height is not None:
                 render_width = int(cam_cfg.width)
                 render_height = int(cam_cfg.height)
@@ -387,11 +400,7 @@ def main() -> int:
             return 1
 
     # 相机按仿真时间节流：下次应输出帧的 sim_time
-    next_camera_time: dict[str, float] = {
-        f"image:{name}": 0.0 for name in config.image_forward
-    } | {
-        f"depth:{name}": 0.0 for name in config.depth_forward
-    }
+    next_camera_time = _initial_camera_times(config)
 
     control_period_sec = config.control_period_sec
     physics_dt = float(model.opt.timestep)
@@ -426,11 +435,7 @@ def main() -> int:
                             sim_time = 0.0
                             current_step = 0
                             episode_index += 1
-                            next_camera_time = {
-                                f"image:{name}": 0.0 for name in config.image_forward
-                            } | {
-                                f"depth:{name}": 0.0 for name in config.depth_forward
-                            }
+                            next_camera_time = _initial_camera_times(config)
                             status = {
                                 "status_name": sim_mode,
                                 "status_code": SIM_STATUS_CODE.get(sim_mode, -1),
@@ -495,35 +500,34 @@ def main() -> int:
 
                         # 相机按 sim_time 节流
                         if renderer is not None:
-                            for cam_name, cam_config in config.image_forward.items():
-                                camera_key = f"image:{cam_name}"
+                            for cam_name, cam_config in config.camera_outputs:
+                                camera_key = _camera_output_key(cam_name, cam_config)
                                 output_id = cam_config.output_id
                                 if _should_emit_camera(
                                     sim_time, next_camera_time, camera_key, cam_config.fps
                                 ):
                                     try:
-                                        payload = _render_color_payload(
-                                            renderer, data, cam_name, config, cv2_module
-                                        )
+                                        if cam_config.image_type == "depth":
+                                            payload = _render_depth_payload(
+                                                renderer, data, cam_name
+                                            )
+                                        else:
+                                            payload = _render_color_payload(
+                                                renderer,
+                                                data,
+                                                cam_name,
+                                                config,
+                                                cv2_module,
+                                            )
                                         node.send_output(output_id, payload)
                                     except Exception as e:
-                                        print(
-                                            f"[mujoco] 渲染相机 {cam_name} 失败: {e}",
-                                            file=sys.stderr,
+                                        image_label = (
+                                            "深度相机"
+                                            if cam_config.image_type == "depth"
+                                            else "相机"
                                         )
-
-                            for cam_name, cam_config in config.depth_forward.items():
-                                camera_key = f"depth:{cam_name}"
-                                output_id = cam_config.output_id
-                                if _should_emit_camera(
-                                    sim_time, next_camera_time, camera_key, cam_config.fps
-                                ):
-                                    try:
-                                        payload = _render_depth_payload(renderer, data, cam_name)
-                                        node.send_output(output_id, payload)
-                                    except Exception as e:
                                         print(
-                                            f"[mujoco] 渲染深度相机 {cam_name} 失败: {e}",
+                                            f"[mujoco] 渲染{image_label} {cam_name} 失败: {e}",
                                             file=sys.stderr,
                                         )
 

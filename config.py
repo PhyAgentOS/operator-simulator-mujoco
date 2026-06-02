@@ -74,24 +74,61 @@ class CameraConfig:
     """单个相机的输出配置。"""
 
     output_id: str
+    image_type: Literal["image", "depth"] = "image"
     fps: float | None = None  # None 表示随 tick 输出
     width: int | None = None
     height: int | None = None
 
 
-def _parse_image_forward(value: Any) -> CameraConfig:
-    """解析 image_forward 单个条目，支持简写或完整形式。"""
+def _parse_image_type(value: Any) -> Literal["image", "depth"]:
+    """解析 image_forward[].type，默认/彩色图统一为 image。"""
+    if value is None:
+        return "image"
+
+    image_type = str(value).strip().lower()
+    if image_type in {"image", "rgb", "color"}:
+        return "image"
+    if image_type == "depth":
+        return "depth"
+    raise ValueError(f"image_forward type 必须是 image/depth，当前: {value}")
+
+
+def _parse_image_forward_item(
+    value: Any,
+    *,
+    default_type: Literal["image", "depth"] = "image",
+) -> CameraConfig:
+    """解析 image_forward 的单个输出条目。"""
     if isinstance(value, str):
-        return CameraConfig(output_id=value, fps=None)
+        return CameraConfig(output_id=value, image_type=default_type, fps=None)
     if isinstance(value, dict):
         fps = value.get("fps", value.get("hz"))  # 兼容 hz
+        image_type = _parse_image_type(value.get("type", default_type))
+        output_id = str(value.get("output", value.get("output_id", ""))).strip()
+        if not output_id:
+            raise ValueError(f"image_forward 条目缺少 output/output_id: {value}")
         return CameraConfig(
-            output_id=value.get("output", value.get("output_id", "")),
+            output_id=output_id,
+            image_type=image_type,
             fps=fps,
             width=value.get("width"),
             height=value.get("height"),
         )
     raise ValueError(f"image_forward 条目格式无效: {value}")
+
+
+def _parse_image_forward(
+    value: Any,
+    *,
+    default_type: Literal["image", "depth"] = "image",
+) -> list[CameraConfig]:
+    """解析 image_forward 单个相机配置，支持简写、完整形式或输出列表。"""
+    if isinstance(value, list):
+        return [
+            _parse_image_forward_item(item, default_type=default_type)
+            for item in value
+        ]
+    return [_parse_image_forward_item(value, default_type=default_type)]
 
 
 @dataclass
@@ -105,8 +142,7 @@ class MuJoCoNodeConfig:
     derived_state_cfg: dict[str, DerivedActuatorStateConfig] = field(
         default_factory=dict
     )
-    image_forward: dict[str, CameraConfig] = field(default_factory=dict)
-    depth_forward: dict[str, CameraConfig] = field(default_factory=dict)
+    image_forward: dict[str, list[CameraConfig]] = field(default_factory=dict)
     image_format: Literal["raw", "jpeg", "png"] = "raw"
     image_jpeg_quality: int = 90
     control_hz: float = 50.0  # 控制周期频率，与 dataflow 中 mujoco 的 tick 间隔一致（如 50 → 20ms）
@@ -123,7 +159,16 @@ class MuJoCoNodeConfig:
     @property
     def camera_names(self) -> set[str]:
         """需输出的相机名称集合。"""
-        return set(self.image_forward.keys()) | set(self.depth_forward.keys())
+        return set(self.image_forward.keys())
+
+    @property
+    def camera_outputs(self) -> list[tuple[str, CameraConfig]]:
+        """展开后的相机输出列表，允许同一个 MuJoCo camera 输出多种图像。"""
+        return [
+            (cam_name, cam_cfg)
+            for cam_name, cam_configs in self.image_forward.items()
+            for cam_cfg in cam_configs
+        ]
 
     @property
     def joint_order(self) -> list[str]:
@@ -220,17 +265,19 @@ class MuJoCoNodeConfig:
         if not isinstance(image_forward_raw, dict):
             image_forward_raw = {}
 
-        image_forward: dict[str, CameraConfig] = {}
+        image_forward: dict[str, list[CameraConfig]] = {}
         for cam_name, val in image_forward_raw.items():
             image_forward[cam_name] = _parse_image_forward(val)
 
+        # 兼容旧配置：depth_forward 会折叠进 image_forward，并作为 type=depth 输出。
         depth_forward_raw = data.get("depth_forward", {})
         if not isinstance(depth_forward_raw, dict):
             depth_forward_raw = {}
 
-        depth_forward: dict[str, CameraConfig] = {}
         for cam_name, val in depth_forward_raw.items():
-            depth_forward[cam_name] = _parse_image_forward(val)
+            image_forward.setdefault(cam_name, []).extend(
+                _parse_image_forward(val, default_type="depth")
+            )
 
         image_format = data.get("image_format", "raw")
         if image_format not in {"raw", "jpeg", "png"}:
@@ -264,7 +311,6 @@ class MuJoCoNodeConfig:
             robots=robots,
             derived_state_cfg=derived_state_cfg,
             image_forward=image_forward,
-            depth_forward=depth_forward,
             image_format=image_format,
             image_jpeg_quality=image_jpeg_quality,
             control_hz=control_hz,

@@ -32,12 +32,19 @@ uv venv --no-workspace "${VENV_DIR}" --python 3.12
 # 2. 安装本地包依赖和打包器 pyinstaller
 uv pip install --python "${VENV_DIR}/bin/python" -r "${NODE_DIR}/pyproject.toml" pyinstaller
 
+mkdir -p "${ROOT_DIR}/dist" "${ROOT_DIR}/build/pyinstaller/mujoco_sim"
+
 echo "==> [mujoco_sim] 开始使用 PyInstaller 进行打包..."
-# 3. 运行 pyinstaller 打包
-"${VENV_DIR}/bin/pyinstaller" \
-  --noconfirm \
-  --clean \
-  "${SCRIPT_DIR}/mujoco_sim.spec"
+# 3. 运行 pyinstaller 打包（固定输出到仓库根 dist/）
+(
+  cd "${ROOT_DIR}"
+  "${VENV_DIR}/bin/pyinstaller" \
+    --noconfirm \
+    --clean \
+    --distpath "${ROOT_DIR}/dist" \
+    --workpath "${ROOT_DIR}/build/pyinstaller/mujoco_sim" \
+    "${SCRIPT_DIR}/mujoco_sim.spec"
+)
 
 # 4. 清理编译虚拟环境
 rm -rf "${VENV_DIR}"

@@ -46,18 +46,6 @@ robots:
 image_format: raw
 image_jpeg_quality: 90
 
-# 深度相机输出配置：MuJoCo 模型中的 camera 名称 -> output_id 或 { output, fps }
-# 输出 payload 固定为 forge_msgs.Image：
-#   encoding: 32FC1
-#   dtype: float32
-#   unit: meters
-# 这样仿真和未来真机 realsense_camera 可以共享同一种 depth 契约；
-# RealSense 原始 z16 建议在 camera 节点内根据 depth_scale 转成 meters 后再输出 32FC1。
-#
-# 示例：将 MuJoCo 中名为 top 的 camera 输出到 dora topic depth/top
-depth_forward:
-  top: { output: "depth/top", fps: 30, width: 640, height: 480 }
-
 # 可选：输出平面位姿（forge_msgs.PoseSet），输出口固定为 "pose_set"
 # 不写 pose_targets 时，会按 robots[].prefix 自动识别每个 robot 的根 body 作为 pose
 # pose_targets: {id: body_name}
@@ -68,6 +56,16 @@ depth_forward:
 #   robot_1: "root"
 #   goal: "nav_goal_marker"  # 自定义 id（建议写模型中完整 body name）
 
+# 图像输出配置：MuJoCo 模型中的 camera 名称 -> output_id、{ output, fps, type } 或输出列表。
+# type 缺省为 image，可显式写 image/rgb/color；深度图写 type: depth。
+# depth 输出 payload 固定为 forge_msgs.Image：
+#   encoding: 32FC1
+#   dtype: float32
+#   unit: meters
+# 这样仿真和真机相机节点可以共享同一种 depth 契约。
 image_forward:
   camera/main: { output: "image/main", fps: 30, width: 640, height: 480 }
   camera/wrist: { output: "image/wrist", fps: 15, width: 640, height: 480 }
+  camera/top:
+    - { output: "image/top", fps: 30, width: 640, height: 480 }
+    - { output: "depth/top", fps: 30, width: 640, height: 480, type: depth }

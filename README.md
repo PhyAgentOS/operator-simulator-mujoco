@@ -7,7 +7,7 @@ MuJoCo 节点属于 robot+sensor 层的仿真实现：接收 `JointCommand`，�
 - `tick` 表示一个控制周期，例如 `dora/timer/millis/20` 对应 50Hz。
 - 每个 `tick` 内执行 `round(control_period_sec / model.opt.timestep)` 个 MuJoCo 物理子步。
 - 每个 `tick` 输出一次 `proprio_state`。
-- 相机按仿真时间节流，`image_forward` 中可为每个相机配置 `fps`。
+- 相机按仿真时间节流，`image_forward` 中可为每个输出配置 `fps`。
 
 ## 输入 / 输出
 
@@ -59,16 +59,18 @@ pose_targets:
 
 如果不写 `pose_targets`，节点会尝试按 `robots[].prefix` 自动识别每个 robot 的根 body。
 
-### 深度图输出
+### 图像与深度输出
 
-`depth_forward` 与 `image_forward` 类似，key 是 MuJoCo XML 中的 camera 名称，value 是输出 topic 配置。深度图用于 mask 区域反投影 3D 点，因此输出契约固定为米制 float32：
+`image_forward` 的 key 是 MuJoCo XML 中的 camera 名称，value 可以是单个输出配置，也可以是输出列表。`type` 缺省为普通 `image`；深度图写 `type: depth`，用于 mask 区域反投影 3D 点，因此输出契约固定为米制 float32：
 
 ```yaml
-depth_forward:
-  top: { output: "depth/top", fps: 30, width: 640, height: 480 }
+image_forward:
+  top:
+    - { output: "image/top", fps: 30, width: 640, height: 480 }
+    - { output: "depth/top", fps: 30, width: 640, height: 480, type: depth }
 ```
 
-输出 payload 为 `forge_msgs.Image`：
+`type: depth` 的输出 payload 为 `forge_msgs.Image`：
 
 - `encoding`: `32FC1`
 - `dtype`: `float32`

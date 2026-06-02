@@ -3,15 +3,38 @@
 
 import os
 
+from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
+
 _spec_dir = os.path.dirname(os.path.abspath(SPEC))
 _node_dir = os.path.dirname(_spec_dir)
 
+mujoco_binaries = collect_dynamic_libs("mujoco")
+
+hiddenimports = (
+    collect_submodules("forge_msgs")
+    + collect_submodules("forge_common")
+    + collect_submodules("cv2")
+    + [
+        "config",
+        "handlers",
+        "simulator",
+        "dora",
+        "mujoco",
+        "numpy",
+        "pyarrow",
+        "yaml",
+        "OpenGL.platform.egl",
+        "OpenGL.EGL",
+        "OpenGL.platform.glfw",
+    ]
+)
+
 a = Analysis(
-    [os.path.join(_node_dir, 'main.py')],
+    [os.path.join(_node_dir, "main.py")],
     pathex=[_node_dir],
-    binaries=[],
+    binaries=mujoco_binaries,
     datas=[],
-    hiddenimports=['OpenGL.platform.egl', 'OpenGL.EGL'],
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -27,7 +50,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='mujoco_sim',
+    name="mujoco_sim",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
