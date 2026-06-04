@@ -23,6 +23,7 @@ MuJoCo 节点属于 robot+sensor 层的仿真实现：接收 `JointCommand`，�
 - `pose_set`: `forge_msgs.PoseSet`，可选，平面位姿通过 `Pose.from_xy_yaw` 表示。
 - `image/*`: raw 图像使用 `forge_msgs.Image`，jpeg/png 使用 `forge_msgs.CompressedImage`。
 - `depth/*`: 深度图使用 `forge_msgs.Image`，固定 `encoding=32FC1`，数据类型 `float32`，单位 meters。
+- `camera_info/*`: JSON bytes，包含内参、深度单位和当前世界系外参。
 - `sim_status`: 仿真进度 JSON，仅反映本节点内部 step/time 状态，不作为外部控制接口。
 
 ## 配置
@@ -79,6 +80,32 @@ image_forward:
 
 真机 RealSense 节点建议把原始 `z16` 深度在 camera 节点内根据 `depth_scale` 转成 meters 后，也输出同样的 `32FC1` 契约，避免 policy 侧再关心相机厂商和 scale。
 
+### 相机信息输出
+
+配置 `camera_info_forward` 后，节点会按 MuJoCo camera 名称输出 JSON bytes。内参优先使用 XML 中的 `focal` / `sensorsize` / `resolution` 计算；如果模型只配置了 `fovy`，则按 pinhole camera 和输出分辨率推导。动态 wrist camera 的外参会随 `tick` 更新：
+
+```yaml
+camera_info_forward:
+  top:
+    output: "camera_info/top"
+    fps: 30
+    width: 640
+    height: 480
+    depth_min_m: 0.02
+    depth_max_m: 1.5
+    depth_unit_scale: 1.0
+```
+
+payload 同时提供通用字段和兼容 `sam3_policy.yaml` 的字段名：
+
+- `camera_width` / `camera_height`
+- `camera_fx` / `camera_fy` / `camera_cx` / `camera_cy`
+- `depth_min_m` / `depth_max_m` / `depth_unit_scale`
+- `K` / `D` / `distortion_model`
+- `position_world` / `quaternion_wxyz_world` / `rotation_matrix_world` / `T_world_camera`
+
+MuJoCo 当前深度图已经是 `32FC1` meters，因此 `depth_unit_scale` 默认应为 `1.0`。只有真机节点输出原始 `z16`/mm 时才应使用 `0.001`。
+
 ## 运行
 
 ```yaml
@@ -92,6 +119,7 @@ image_forward:
     - pose_set
     - image/main
     - depth/top
+    - camera_info/top
   config:
     config_path: ./packages/nodes/simulators/mujoco/config.yaml
 ```

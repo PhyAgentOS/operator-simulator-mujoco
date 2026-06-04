@@ -69,3 +69,17 @@ image_forward:
   camera/top:
     - { output: "image/top", fps: 30, width: 640, height: 480 }
     - { output: "depth/top", fps: 30, width: 640, height: 480, type: depth }
+
+# 相机信息输出配置：MuJoCo camera 名称 -> output_id 或 { output, fps, width, height, depth_* }。
+# payload 为 JSON bytes，包含 camera_width/height/fx/fy/cx/cy、depth_min_m、
+# depth_max_m、depth_unit_scale，以及当前世界系外参 T_world_camera。
+# depth_unit_scale 对当前 32FC1 meters 深度图应为 1.0；若某个真机节点输出 z16/mm 才应为 0.001。
+camera_info_forward:
+  camera/top:
+    output: "camera_info/top"
+    fps: 30
+    width: 640
+    height: 480
+    depth_min_m: 0.02
+    depth_max_m: 1.5
+    depth_unit_scale: 1.0
