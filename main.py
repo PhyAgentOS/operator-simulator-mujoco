@@ -24,7 +24,7 @@ from dora import Node
 from forge_msgs import CompressedImage, Image, JointCommand, JointState, Pose, PoseSet
 from forge_common import get_logger
 
-from config import CameraConfig, CameraInfoConfig, MuJoCoNodeConfig, load_config
+from config import CameraConfig, MuJoCoNodeConfig, load_config
 from handlers import (
     build_joint_state,
     build_robot_command,
@@ -230,167 +230,6 @@ def _build_depth_payload(depth_m: np.ndarray):
     return Image.from_numpy(depth32, encoding="32FC1").to_arrow()
 
 
-def _rotation_matrix_to_quat_wxyz(matrix: np.ndarray) -> list[float]:
-    """将 3x3 旋转矩阵转换为 wxyz 四元数。"""
-    m = np.asarray(matrix, dtype=float).reshape(3, 3)
-    trace = float(np.trace(m))
-    if trace > 0.0:
-        s = math.sqrt(trace + 1.0) * 2.0
-        qw = 0.25 * s
-        qx = (m[2, 1] - m[1, 2]) / s
-        qy = (m[0, 2] - m[2, 0]) / s
-        qz = (m[1, 0] - m[0, 1]) / s
-    elif m[0, 0] > m[1, 1] and m[0, 0] > m[2, 2]:
-        s = math.sqrt(1.0 + m[0, 0] - m[1, 1] - m[2, 2]) * 2.0
-        qw = (m[2, 1] - m[1, 2]) / s
-        qx = 0.25 * s
-        qy = (m[0, 1] + m[1, 0]) / s
-        qz = (m[0, 2] + m[2, 0]) / s
-    elif m[1, 1] > m[2, 2]:
-        s = math.sqrt(1.0 + m[1, 1] - m[0, 0] - m[2, 2]) * 2.0
-        qw = (m[0, 2] - m[2, 0]) / s
-        qx = (m[0, 1] + m[1, 0]) / s
-        qy = 0.25 * s
-        qz = (m[1, 2] + m[2, 1]) / s
-    else:
-        s = math.sqrt(1.0 + m[2, 2] - m[0, 0] - m[1, 1]) * 2.0
-        qw = (m[1, 0] - m[0, 1]) / s
-        qx = (m[0, 2] + m[2, 0]) / s
-        qy = (m[1, 2] + m[2, 1]) / s
-        qz = 0.25 * s
-    return [float(qw), float(qx), float(qy), float(qz)]
-
-
-def _camera_dimensions(
-    model: mujoco.MjModel,
-    config: MuJoCoNodeConfig,
-    cam_name: str,
-    cam_id: int,
-    info_config: CameraInfoConfig,
-    default_width: int,
-    default_height: int,
-) -> tuple[int, int]:
-    """解析 camera_info 的 width/height，优先显式配置，其次复用图像输出配置。"""
-    width = info_config.width
-    height = info_config.height
-
-    if width is None or height is None:
-        for name, cam_config in config.camera_outputs:
-            if name == cam_name and cam_config.width is not None and cam_config.height is not None:
-                width = width if width is not None else cam_config.width
-                height = height if height is not None else cam_config.height
-                break
-
-    if width is None or height is None:
-        model_width = int(model.cam_resolution[cam_id][0])
-        model_height = int(model.cam_resolution[cam_id][1])
-        if model_width > 1 and model_height > 1:
-            width = width if width is not None else model_width
-            height = height if height is not None else model_height
-
-    return int(width or default_width), int(height or default_height)
-
-
-def _camera_intrinsics(
-    model: mujoco.MjModel,
-    cam_id: int,
-    width: int,
-    height: int,
-) -> tuple[float, float, float, float]:
-    """根据 MuJoCo camera 的 focal/sensorsize/resolution 或 fovy 计算像素内参。"""
-    intrinsic = model.cam_intrinsic[cam_id]
-    sensorsize = model.cam_sensorsize[cam_id]
-    sensor_w = float(sensorsize[0])
-    sensor_h = float(sensorsize[1])
-    focal_x = float(intrinsic[0])
-    focal_y = float(intrinsic[1])
-    principal_x = float(intrinsic[2])
-    principal_y = float(intrinsic[3])
-
-    if sensor_w > 0.0 and sensor_h > 0.0 and focal_x > 0.0 and focal_y > 0.0:
-        fx = focal_x / sensor_w * width
-        fy = focal_y / sensor_h * height
-        cx = width * (0.5 + principal_x / sensor_w)
-        cy = height * (0.5 + principal_y / sensor_h)
-        return float(fx), float(fy), float(cx), float(cy)
-
-    fovy = math.radians(float(model.cam_fovy[cam_id]))
-    fy = height / (2.0 * math.tan(fovy / 2.0))
-    fx = fy
-    return float(fx), float(fy), float(width / 2.0), float(height / 2.0)
-
-
-def _build_camera_info_payload(
-    model: mujoco.MjModel,
-    data: mujoco.MjData,
-    config: MuJoCoNodeConfig,
-    cam_name: str,
-    cam_id: int,
-    info_config: CameraInfoConfig,
-    default_width: int,
-    default_height: int,
-    sim_time: float,
-) -> bytes:
-    """构建 camera_info JSON，包含 SAM policy 所需内参与当前世界系外参。"""
-    width, height = _camera_dimensions(
-        model,
-        config,
-        cam_name,
-        cam_id,
-        info_config,
-        default_width,
-        default_height,
-    )
-    fx, fy, cx, cy = _camera_intrinsics(model, cam_id, width, height)
-
-    position = np.asarray(data.cam_xpos[cam_id], dtype=float)
-    rotation = np.asarray(data.cam_xmat[cam_id], dtype=float).reshape(3, 3)
-    transform = np.eye(4, dtype=float)
-    transform[:3, :3] = rotation
-    transform[:3, 3] = position
-
-    payload = {
-        "camera_name": cam_name,
-        "frame_id": cam_name,
-        "sim_time": sim_time,
-        "camera_model": "pinhole",
-        "distortion_model": "none",
-        "width": width,
-        "height": height,
-        "fx": fx,
-        "fy": fy,
-        "cx": cx,
-        "cy": cy,
-        # 兼容 sam3_policy.yaml 的字段命名。
-        "camera_width": width,
-        "camera_height": height,
-        "camera_fx": fx,
-        "camera_fy": fy,
-        "camera_cx": cx,
-        "camera_cy": cy,
-        "depth_min_m": info_config.depth_min_m,
-        "depth_max_m": info_config.depth_max_m,
-        "depth_unit_scale": info_config.depth_unit_scale,
-        "K": [
-            fx,
-            0.0,
-            cx,
-            0.0,
-            fy,
-            cy,
-            0.0,
-            0.0,
-            1.0,
-        ],
-        "D": [0.0, 0.0, 0.0, 0.0, 0.0],
-        "position_world": position.tolist(),
-        "quaternion_wxyz_world": _rotation_matrix_to_quat_wxyz(rotation),
-        "rotation_matrix_world": rotation.reshape(-1).tolist(),
-        "T_world_camera": transform.reshape(-1).tolist(),
-    }
-    return json.dumps(payload).encode("utf-8")
-
-
 def _render_color_payload(
     renderer,
     data: mujoco.MjData,
@@ -437,19 +276,6 @@ def _initial_camera_times(config: MuJoCoNodeConfig) -> dict[str, float]:
     return {
         _camera_output_key(cam_name, cam_config): 0.0
         for cam_name, cam_config in config.camera_outputs
-    }
-
-
-def _camera_info_key(cam_name: str, info_config: CameraInfoConfig) -> str:
-    """camera_info 的节流 key。"""
-    return f"camera_info:{cam_name}:{info_config.output_id}"
-
-
-def _initial_camera_info_times(config: MuJoCoNodeConfig) -> dict[str, float]:
-    """初始化每路 camera_info 输出的下一帧时间。"""
-    return {
-        _camera_info_key(cam_name, info_config): 0.0
-        for cam_name, info_config in config.camera_info_forward.items()
     }
 
 
@@ -545,14 +371,6 @@ def main() -> int:
                 prefix,
             )
 
-    camera_info_ids: dict[str, int] = {}
-    for cam_name in config.camera_info_forward:
-        cam_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, cam_name)
-        if cam_id >= 0:
-            camera_info_ids[cam_name] = cam_id
-        else:
-            logger.warning("[mujoco] camera_info camera '%s' 在模型中未找到，将跳过", cam_name)
-
     # 相机渲染器（如有配置）
     renderer = None
     render_height, render_width = 480, 640
@@ -583,7 +401,6 @@ def main() -> int:
 
     # 相机按仿真时间节流：下次应输出帧的 sim_time
     next_camera_time = _initial_camera_times(config)
-    next_camera_info_time = _initial_camera_info_times(config)
 
     control_period_sec = config.control_period_sec
     physics_dt = float(model.opt.timestep)
@@ -619,7 +436,6 @@ def main() -> int:
                             current_step = 0
                             episode_index += 1
                             next_camera_time = _initial_camera_times(config)
-                            next_camera_info_time = _initial_camera_info_times(config)
                             status = {
                                 "status_name": sim_mode,
                                 "status_code": SIM_STATUS_CODE.get(sim_mode, -1),
@@ -681,31 +497,6 @@ def main() -> int:
 
                             if poses:
                                 node.send_output("pose_set", PoseSet.from_poses(poses).to_arrow())
-
-                        # camera_info 包含内参和当前世界系外参，动态相机随 tick 更新。
-                        for cam_name, info_config in config.camera_info_forward.items():
-                            cam_id = camera_info_ids.get(cam_name)
-                            if cam_id is None:
-                                continue
-                            info_key = _camera_info_key(cam_name, info_config)
-                            if _should_emit_camera(
-                                sim_time,
-                                next_camera_info_time,
-                                info_key,
-                                info_config.fps,
-                            ):
-                                payload = _build_camera_info_payload(
-                                    model,
-                                    data,
-                                    config,
-                                    cam_name,
-                                    cam_id,
-                                    info_config,
-                                    render_width,
-                                    render_height,
-                                    sim_time,
-                                )
-                                node.send_output(info_config.output_id, payload)
 
                         # 相机按 sim_time 节流
                         if renderer is not None:

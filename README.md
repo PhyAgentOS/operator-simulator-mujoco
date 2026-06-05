@@ -23,7 +23,6 @@ MuJoCo 节点属于 robot+sensor 层的仿真实现：接收 `JointCommand`，�
 - `pose_set`: `forge_msgs.PoseSet`，可选，平面位姿通过 `Pose.from_xy_yaw` 表示。
 - `image/*`: raw 图像使用 `forge_msgs.Image`，jpeg/png 使用 `forge_msgs.CompressedImage`。
 - `depth/*`: 深度图使用 `forge_msgs.Image`，固定 `encoding=32FC1`，数据类型 `float32`，单位 meters。
-- `camera_info/*`: 可选 JSON bytes，包含内参、深度单位和当前世界系外参；默认不建议高频输出静态信息。
 - `sim_status`: 仿真进度 JSON，仅反映本节点内部 step/time 状态，不作为外部控制接口。
 
 ## 配置
@@ -82,7 +81,7 @@ image_forward:
 
 ### 深度 Policy 的相机参数
 
-对固定仿真相机，推荐把相机参数写在 policy 配置中，而不是通过 Dora 高频透传 `camera_info/*`。深度图本身继续通过 `depth/*` 高频发送，policy 使用静态内参完成反投影：
+相机参数写在 policy 配置中，不通过 Dora 高频透传静态标定信息。深度图本身继续通过 `depth/*` 高频发送，policy 使用静态内参完成反投影：
 
 ```yaml
 # policy config 示例
@@ -102,32 +101,6 @@ depth_unit_scale: 1.0
 - `camera_fx/fy/cx/cy`：由 MuJoCo XML 中的 camera 光学参数计算。若配置了 `focal` / `sensorsize` / `resolution`，按这些值折算到输出分辨率；若只配置了 `fovy`，按 pinhole 模型从 `fovy` 和输出 `width/height` 推导。
 - `depth_min_m` / `depth_max_m`：policy 侧有效深度范围，按任务工作空间设置，用于过滤太近、太远或异常的 depth。
 - `depth_unit_scale`：深度原始值转 meters 的比例。MuJoCo 输出 `32FC1` meters，因此为 `1.0`；真机 `16UC1` 毫米深度才通常是 `0.001`。
-
-### 可选 camera_info 输出
-
-仅在下游不方便静态配置相机内参，或确实需要动态相机外参 `T_world_camera` 时，才配置 `camera_info_forward`。配置后节点会按 MuJoCo camera 名称输出 JSON bytes；动态 wrist camera 的外参会随 `tick` 更新：
-
-```yaml
-camera_info_forward:
-  top:
-    output: "camera_info/top"
-    fps: 1
-    width: 640
-    height: 480
-    depth_min_m: 0.02
-    depth_max_m: 1.5
-    depth_unit_scale: 1.0
-```
-
-payload 同时提供通用字段和兼容 `sam3_policy.yaml` 的字段名：
-
-- `camera_width` / `camera_height`
-- `camera_fx` / `camera_fy` / `camera_cx` / `camera_cy`
-- `depth_min_m` / `depth_max_m` / `depth_unit_scale`
-- `K` / `D` / `distortion_model`
-- `position_world` / `quaternion_wxyz_world` / `rotation_matrix_world` / `T_world_camera`
-
-MuJoCo 当前深度图已经是 `32FC1` meters，因此 `depth_unit_scale` 默认应为 `1.0`。只有真机节点输出原始 `z16`/mm 时才应使用 `0.001`。
 
 ## 运行
 

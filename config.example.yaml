@@ -70,7 +70,7 @@ image_forward:
     - { output: "image/top", fps: 30, width: 640, height: 480 }
     - { output: "depth/top", fps: 30, width: 640, height: 480, type: depth }
 
-# 默认不输出 camera_info，避免把相机内参等静态信息作为高频 Dora topic 传输。
+# 不输出 camera_info，避免把相机内参等静态信息作为高频 Dora topic 传输。
 # 需要使用深度图的 policy 应在自身配置中静态填写以下参数：
 #   camera_width / camera_height
 #   camera_fx / camera_fy / camera_cx / camera_cy
@@ -82,14 +82,3 @@ image_forward:
 # - MuJoCo depth 输出为 forge_msgs.Image encoding=32FC1，单位已经是 meters，
 #   因此 depth_unit_scale 应为 1.0。
 # - depth_min_m/depth_max_m 是 policy 的有效深度裁剪范围，按任务工作空间设置。
-#
-# 仅在下游不方便静态配置，或确实需要动态相机外参 T_world_camera 时，才显式开启：
-# camera_info_forward:
-#   camera/top:
-#     output: "camera_info/top"
-#     fps: 1
-#     width: 640
-#     height: 480
-#     depth_min_m: 0.02
-#     depth_max_m: 1.5
-#     depth_unit_scale: 1.0
