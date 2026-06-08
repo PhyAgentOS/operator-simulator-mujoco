@@ -8,15 +8,15 @@
 #
 # 时间与频率：control_hz 为控制周期频率，需与 dataflow 中 mujoco 的 tick 间隔一致（如 50Hz → 20ms）
 
-model_path: ./model.xml
+model_path: ./model.xml  # MuJoCo XML 场景路径；可用相对路径或绝对路径。
 
 # 控制周期频率（Hz），缺省 50；与 dataflow 中 tick 间隔一致（50 → 20ms）
 control_hz: 50
 
 joints:
-  - name: j1
-    mode: position
-    unit: radians
+  - name: j1        # 输出到 JointState/JointCommand 的逻辑关节名。
+    mode: position  # 控制模式；当前常用 position。
+    unit: radians   # 单位；旋转关节通常 radians，夹爪等直线关节通常 millimeters。
   - name: j2
     mode: position
     unit: radians
@@ -35,7 +35,10 @@ joints:
 
 robots:
   - id: robot_0
-    joints: ["j1", "j2"]
+    prefix: item_1/       # 可选；用于按前缀在模型中定位该机器人的 body/joint。
+    joints: ["j1", "j2"]  # 该机器人包含的逻辑关节名，顺序决定向量顺序。
+    actuator_order: ["j1", "j2"]  # 可选；控制向量中的执行器顺序，省略时与 joints 相同。
+    joint_to_actuator: {j1: j1, j2: j2}  # 可选；逻辑关节名 -> MuJoCo actuator 名。
   - id: robot_1
     joints: ["j3"]
 
@@ -43,8 +46,8 @@ robots:
 # 无 fps 时随 tick 输出。camera 名称需与模型 XML 中 camera 的 name 属性一致
 # image_format: raw 输出 forge_msgs.Image；jpeg/png 输出 forge_msgs.CompressedImage
 # image_jpeg_quality: JPEG 质量（1-100，仅 image_format=jpeg 时生效）
-image_format: raw
-image_jpeg_quality: 90
+image_format: raw        # 可选 raw | jpeg | png；raw 输出 forge_msgs.Image，jpeg/png 输出 CompressedImage。
+image_jpeg_quality: 90   # JPEG 质量，范围 1-100；仅 image_format=jpeg 时生效。
 
 # 可选：输出平面位姿（forge_msgs.PoseSet），输出口固定为 "pose_set"
 # 不写 pose_targets 时，会按 robots[].prefix 自动识别每个 robot 的根 body 作为 pose
@@ -64,6 +67,8 @@ image_jpeg_quality: 90
 #   unit: meters
 # 这样仿真和真机相机节点可以共享同一种 depth 契约。
 image_forward:
+  # MuJoCo camera 名称 -> Dora 输出配置。
+  # output 必填；fps 省略时随 tick 输出；width/height 省略时使用默认渲染尺寸。
   camera/main: { output: "image/main", fps: 30, width: 640, height: 480 }
   camera/wrist: { output: "image/wrist", fps: 15, width: 640, height: 480 }
   camera/top:
