@@ -10,6 +10,7 @@ import os
 import platform
 import sys
 from pathlib import Path
+from typing import Any
 
 # 渲染后端：须在 import mujoco 之前设置。
 # Linux 默认 egl 便于无显示器/SSH/服务器；Windows 不支持 egl，默认 glfw。
@@ -17,21 +18,20 @@ from pathlib import Path
 if "MUJOCO_GL" not in os.environ:
     os.environ["MUJOCO_GL"] = "glfw" if platform.system() == "Windows" else "egl"
 
-from cv2 import log
 import mujoco
 import numpy as np
 from dora import Node
 from forge_msgs import CompressedImage, Image, JointCommand, JointState, Pose, PoseSet
 from forge_common import get_logger
 
-from config import CameraConfig, MuJoCoNodeConfig, load_config
-from handlers import (
+from .config import CameraConfig, MuJoCoNodeConfig, load_config
+from .handlers import (
     build_joint_state,
     build_robot_command,
     robot_state_to_robot_command,
     sim_state_to_robot_state,
 )
-from simulator import ActuatorSpec, JointSpec, MuJoCoSimulator
+from .simulator import ActuatorSpec, JointSpec, MuJoCoSimulator
 
 logger = get_logger(__name__)
 
@@ -213,7 +213,7 @@ def _create_renderer(model: mujoco.MjModel, height: int = 480, width: int = 640)
 def _build_image_payload(
     pixels: np.ndarray,
     config: MuJoCoNodeConfig,
-    cv2_module: object | None,
+    cv2_module: Any | None,
 ):
     """根据配置将渲染图像编码为 Image（raw 或 jpeg/png 压缩）。"""
     height, width = int(pixels.shape[0]), int(pixels.shape[1])
@@ -259,7 +259,7 @@ def _render_color_payload(
     data: mujoco.MjData,
     camera: str,
     config: MuJoCoNodeConfig,
-    cv2_module: object | None,
+    cv2_module: Any | None,
 ):
     """渲染 RGB 图像。Renderer 可能刚渲染过 depth，因此这里显式切回 RGB 模式。"""
     renderer.disable_depth_rendering()
@@ -604,8 +604,13 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
+def cli() -> int:
+    """Console-script entry point."""
     try:
-        sys.exit(main())
+        return main()
     except KeyboardInterrupt:
-        sys.exit(0)
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(cli())

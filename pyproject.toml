@@ -1,19 +1,42 @@
 [project]
-name = "forge-runtime-simulators-mujoco"
+name = "mujoco-sim"
 version = "0.1.0"
-description = "Add your description here"
+description = "Standalone MuJoCo simulator node for Forge dataflows"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "dora-rs==0.4.1",
     "forge-common",
     "forge-msgs",
     "mujoco==3.3.7",
-    "numpy",
+    "numpy>=2.0.0",
     "opencv-python",
     "pyyaml>=6.0",
 ]
 
+[project.scripts]
+mujoco_sim = "mujoco_sim.main:cli"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
+build = [
+    "pyinstaller>=6.18.0",
+]
+
 [tool.uv.sources]
-forge-common = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", rev = "dev", subdirectory = "packages/common" }
-forge-msgs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", subdirectory = "packages/msgs", rev = "dev" }
+forge-common = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", rev = "83be2093b80310c438fa8f1d0d9a593123469d7d", subdirectory = "packages/common" }
+forge-msgs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", rev = "83be2093b80310c438fa8f1d0d9a593123469d7d", subdirectory = "packages/msgs" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mujoco_sim"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+extraPaths = ["src"]

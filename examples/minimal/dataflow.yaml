@@ -1,0 +1,7 @@
+nodes:
+  - id: mujoco
+    path: mujoco_sim
+    inputs:
+      tick: dora/timer/millis/20
+    outputs: [proprio_state, sim_status]
+    args: --config simulator.yaml

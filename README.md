@@ -1,6 +1,19 @@
-# MuJoCo 仿真节点
+# mujoco_sim
 
-MuJoCo 节点属于 robot+sensor 层的仿真实现：接收 `JointCommand`，输出 `JointState`、图像和可选 `PoseSet`。它不接收 `PolicyCommand`，也不接收 `sim_control`；仿真是否运行由上游 policy/dataflow 决定是否持续发送 `tick` 和 `action`。
+独立的 MuJoCo Dora 仿真节点：接收 `JointCommand`，输出 `JointState`、图像和可选 `PoseSet`。它不接收 `PolicyCommand`，也不接收 `sim_control`；仿真是否运行由上游 policy/dataflow 决定是否持续发送 `tick` 和 `action`。
+
+完整机器人模型和 Forge 端到端 dataflow 由 `forge_runtime` 仓库维护；本仓库只包含节点实现与一个不依赖外部 assets 的最小示例。
+
+## 安装与开发
+
+需要 Python 3.12 和 [uv](https://docs.astral.sh/uv/)：
+
+```bash
+uv sync --frozen --all-groups
+uv run pytest -q
+uv run mujoco_sim --help
+uv run python -m mujoco_sim --help
+```
 
 ## 时间与频率
 
@@ -120,9 +133,11 @@ depth_unit_scale: 1.0
 
 ## 运行
 
+安装后可将 console script 直接用于 Dora dataflow：
+
 ```yaml
 - id: mujoco
-  path: ./packages/nodes/simulators/mujoco/main.py
+  path: mujoco_sim
   inputs:
     tick: dora/timer/millis/20
     action: <上游 JointCommand 源>
@@ -131,8 +146,23 @@ depth_unit_scale: 1.0
     - pose_set
     - image/main
     - depth/top
-  config:
-    config_path: ./packages/nodes/simulators/mujoco/config.yaml
+  args: --config simulator.yaml
+```
+
+最小示例位于 `examples/minimal`：
+
+```bash
+cd examples/minimal
+uv run dora run dataflow.yaml
 ```
 
 运行时 topic 名保持旧约定 `action` / `proprio_state`，payload 使用 `JointCommand` / `JointState`。
+
+## 构建独立二进制
+
+```bash
+./scripts/build_pyinstaller.sh
+./dist/mujoco_sim --help
+```
+
+构建产物固定为 `dist/mujoco_sim`。Forge 部署可以将该 artifact 安装到 `${FORGE_RUNTIME_BIN}/mujoco_sim`，从而保持现有 dataflow 的二进制路径约定。

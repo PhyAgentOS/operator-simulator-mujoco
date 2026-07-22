@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Environments
+.venv/
+.venv_build/
+
+# Build output
+build/
+dist/
+
+# Dora runtime output
+out/
+dataflow.run.yaml
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store

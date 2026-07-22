@@ -1,20 +1,15 @@
 from __future__ import annotations
 
 import math
-import sys
-from pathlib import Path
 
-NODE_DIR = Path(__file__).resolve().parents[1]
-if str(NODE_DIR) not in sys.path:
-    sys.path.insert(0, str(NODE_DIR))
 
 import mujoco
 import pytest
 from forge_msgs import JointCommand
 
-from config import MuJoCoNodeConfig
-from main import _build_joints_and_actuators, _reset_simulation_state
-from simulator import MuJoCoSimulator
+from mujoco_sim.config import MuJoCoNodeConfig
+from mujoco_sim.main import _build_joints_and_actuators, _reset_simulation_state
+from mujoco_sim.simulator import MuJoCoSimulator
 
 
 def _base_config() -> dict[str, object]:

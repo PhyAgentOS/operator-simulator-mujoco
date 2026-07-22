@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from forge_msgs import JointCommand, JointState
 
-from config import MuJoCoNodeConfig, RobotConfig
+from .config import MuJoCoNodeConfig, RobotConfig
 
 
 def _values_by_name(message: JointCommand | JointState, field: str) -> dict[str, float]:

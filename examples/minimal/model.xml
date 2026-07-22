@@ -1,0 +1,12 @@
+<mujoco model="mujoco_sim_minimal">
+  <option timestep="0.002" gravity="0 0 0"/>
+  <worldbody>
+    <body name="arm">
+      <joint name="joint1" type="hinge" axis="0 0 1" range="-1.57 1.57"/>
+      <geom type="capsule" size="0.03 0.2" pos="0.2 0 0" euler="0 1.5708 0" mass="1"/>
+    </body>
+  </worldbody>
+  <actuator>
+    <position name="joint1" joint="joint1" kp="100" ctrlrange="-1.57 1.57"/>
+  </actuator>
+</mujoco>
