@@ -33,6 +33,22 @@ MuJoCo 节点属于 robot+sensor 层的仿真实现：接收 `JointCommand`，�
 - 环境变量 `MUJOCO_NODE_CONFIG`
 - dataflow 节点 `config` 字段
 
+### 初始关节位置
+
+`initial_positions` 可覆盖 MuJoCo 模型的 `qpos0`，并在节点启动和收到 `reset_scene` 时应用：
+
+```yaml
+initial_positions:
+  lift: 0.2
+```
+
+- key 必须是顶层 `joints` 中声明的全局逻辑关节名；进入每个 robot 时按 `joint_to_actuator` 映射。
+- value 单位与对应 `joints[].unit` 一致，例如 `radians`、`meters` 或 `millimeters`；仅支持 `position` / `prismatic` 关节。
+- 配置可以是稀疏的；未列出的关节保留模型 `qpos0`。
+- `state_from_joints` 派生关节支持 `diff` / `sum` 反向初始化；调整底层 qpos 时会保留其均值或总偏移。
+- position actuator 的 `ctrl` 会在 `mj_forward` 后同步到 actuator length，避免首个物理步把非零初始位拉回默认目标，并兼容 gear/tendon transmission。
+- 初始化后的 actuator target 必须落在 MuJoCo `ctrlrange` 内。运行时命令也优先使用模型 `ctrlrange`，只有模型未声明限位时才使用按单位推断的兼容限位。
+
 ### 派生 actuator 状态
 
 例如 gripper 由多个 MuJoCo joint 的 qpos 合成：

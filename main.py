@@ -162,11 +162,6 @@ def _build_joints_and_actuators(
         unit = spec.unit if spec else "radians"
         mode = spec.mode if spec else "position"
         min_val, max_val = _actuator_limits(unit)
-        mj_lookup = (
-            joint_name
-            if joint_name is not None and joint_name != actuator_name
-            else None
-        )
         actuators.append(
             ActuatorSpec(
                 name=actuator_name,
@@ -175,10 +170,39 @@ def _build_joints_and_actuators(
                 min_value=min_val,
                 max_value=max_val,
                 unit=unit,
-                mj_name=mj_lookup,
             )
         )
     return joints, actuators
+
+
+def _reset_simulation_state(
+    model: mujoco.MjModel,
+    data: mujoco.MjData,
+    config: MuJoCoNodeConfig,
+    simulators: dict[str, MuJoCoSimulator],
+) -> None:
+    """恢复模型状态，应用配置初始位，并同步 position actuator 目标。"""
+    mujoco.mj_resetData(model, data)
+    applied_joint_names: set[str] = set()
+
+    for robot in config.robots:
+        actuator_positions: dict[str, float] = {}
+        for joint_name, actuator_name in robot.joint_to_actuator.items():
+            if joint_name not in config.initial_positions:
+                continue
+            actuator_positions[actuator_name] = config.initial_positions[joint_name]
+            applied_joint_names.add(joint_name)
+        simulators[robot.id].apply_initial_positions(actuator_positions)
+
+    unapplied = sorted(set(config.initial_positions) - applied_joint_names)
+    if unapplied:
+        raise ValueError(
+            f"initial_positions 关节未分配给任何 robot: {unapplied}"
+        )
+
+    mujoco.mj_forward(model, data)
+    for simulator in simulators.values():
+        simulator.sync_actuator_targets()
 
 
 def _create_renderer(model: mujoco.MjModel, height: int = 480, width: int = 640):
@@ -295,18 +319,18 @@ def main() -> int:
     data = mujoco.MjData(model)
 
     # 为每个 robot 创建 MuJoCoSimulator
-    # 预先构建派生 actuator 状态配置，供 simulator 使用（例如 gripper 由 joint7/joint8 合成）
-    derived_state_cfg_for_sim: dict[str, dict[str, object]] = {}
-    for name, cfg in config.derived_state_cfg.items():
-        derived_state_cfg_for_sim[name] = {
-            "joint_names": list(cfg.joint_names),
-            "expr": cfg.state_expr,
-            "scale": cfg.state_scale,
-        }
-
     simulators: dict[str, MuJoCoSimulator] = {}
     for robot in config.robots:
         joints, actuators = _build_joints_and_actuators(config, robot)
+        derived_state_cfg_for_sim: dict[str, dict[str, object]] = {}
+        for joint_name, actuator_name in robot.joint_to_actuator.items():
+            derived = config.derived_state_cfg.get(joint_name)
+            if derived is not None:
+                derived_state_cfg_for_sim[actuator_name] = {
+                    "joint_names": list(derived.joint_names),
+                    "expr": derived.state_expr,
+                    "scale": derived.state_scale,
+                }
         prefix = robot.prefix
         sim = MuJoCoSimulator(
             model=model,
@@ -317,6 +341,9 @@ def main() -> int:
             prefix=prefix,
         )
         simulators[robot.id] = sim
+
+    # 启动时与 reset_scene 使用完全相同的初始状态。
+    _reset_simulation_state(model, data, config, simulators)
 
     # 解析 pose_set 的 body id（若配置了 pose_targets）：缓存 {id -> body_id}
     pose_body_ids: dict[str, int] = {}
@@ -429,9 +456,7 @@ def main() -> int:
                         command = payload.get("command") if isinstance(payload, dict) else None
                         if command == "reset_scene":
                             sim_mode = "RESETTING"
-                            mujoco.mj_resetData(model, data)
-                            data.ctrl[:] = 0
-                            mujoco.mj_forward(model, data)
+                            _reset_simulation_state(model, data, config, simulators)
                             sim_time = 0.0
                             current_step = 0
                             episode_index += 1

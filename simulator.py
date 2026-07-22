@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import mujoco
@@ -111,11 +111,27 @@ class MuJoCoSimulator:
             )
             if act_id >= 0:
                 self._ctrl_indices[logical_name] = act_id
+                runtime_actuator = actuator
+                if bool(model.actuator_ctrllimited[act_id]):
+                    min_value = float(model.actuator_ctrlrange[act_id][0])
+                    max_value = float(model.actuator_ctrlrange[act_id][1])
+                    if actuator.unit in ("millimeters", "millimeters/s"):
+                        min_value *= 1000.0
+                        max_value *= 1000.0
+                    runtime_actuator = replace(
+                        actuator,
+                        min_value=min_value,
+                        max_value=max_value,
+                    )
+                    self._actuator_map[logical_name] = runtime_actuator
                 logger.info(
-                    "  - Mapped Actuator '%s' -> '%s' with ctrl_idx: %s",
+                    "  - Mapped Actuator '%s' -> '%s' with ctrl_idx: %s, range: [%s, %s] %s",
                     logical_name,
                     prefixed_name,
                     act_id,
+                    runtime_actuator.min_value,
+                    runtime_actuator.max_value,
+                    runtime_actuator.unit,
                 )
             else:
                 logger.warning(
@@ -176,11 +192,84 @@ class MuJoCoSimulator:
         return [a.name for a in self._actuators]
 
     def reset(self) -> None:
-        """将仿真状态重置为模型初始（qpos0，零速度）。"""
-        for logical_name, addr in self._qpos_addrs.items():
+        """将本 robot 状态重置为模型 qpos0，并同步 actuator 目标。"""
+        qpos_addrs = set(self._qpos_addrs.values())
+        for cfg in self._derived_state_cfg.values():
+            qpos_addrs.update(cfg.get("joint_qpos_addrs", []))
+        for addr in qpos_addrs:
             self._data.qpos[addr] = self._model.qpos0[addr]
         self._data.qvel[:] = 0
-        logger.debug("[MuJoCoSimulator] Reset to initial state")
+        mujoco.mj_forward(self._model, self._data)
+        self.sync_actuator_targets()
+        logger.debug("[MuJoCoSimulator] Reset to model initial state")
+
+    def apply_initial_positions(self, positions: dict[str, float]) -> None:
+        """应用 actuator-keyed 初始位置。
+
+        ``positions`` 使用消息侧单位（弧度、米或毫米）。调用方应先执行
+        ``mj_resetData``；未显式配置的关节保留模型 ``qpos0``。写入全部 robot
+        后须执行 ``mj_forward`` 和 :meth:`sync_actuator_targets`。
+        """
+        mapped_names = set(self._qpos_addrs) | set(self._derived_state_cfg)
+        unknown = sorted(set(positions) - mapped_names)
+        if unknown:
+            raise ValueError(
+                f"初始位置包含未映射到 MuJoCo joint 的 actuator: {unknown}"
+            )
+
+        for logical_name, value in positions.items():
+            actuator = self._actuator_map.get(logical_name)
+            if actuator is None:
+                raise ValueError(f"初始位置 actuator '{logical_name}' 未配置")
+
+            qpos_addr = self._qpos_addrs.get(logical_name)
+            if qpos_addr is not None:
+                qpos_value = value
+                if actuator.unit == "millimeters":
+                    qpos_value /= 1000.0
+                self._data.qpos[qpos_addr] = qpos_value
+                continue
+
+            cfg = self._derived_state_cfg[logical_name]
+            qpos_addrs = cfg["joint_qpos_addrs"]
+            scale = float(cfg.get("scale", 1.0))
+            if scale == 0.0:
+                raise ValueError(
+                    f"初始位置 {logical_name} 无法应用：state_scale 不能为 0"
+                )
+            target_raw = value / scale
+            current = [float(self._data.qpos[addr]) for addr in qpos_addrs]
+            expr = cfg.get("expr")
+            if expr == "diff" and len(qpos_addrs) >= 2:
+                delta = (target_raw - (current[0] - current[1])) / 2.0
+                self._data.qpos[qpos_addrs[0]] += delta
+                self._data.qpos[qpos_addrs[1]] -= delta
+            elif expr == "sum":
+                delta = (target_raw - sum(current)) / len(qpos_addrs)
+                for addr in qpos_addrs:
+                    self._data.qpos[addr] += delta
+            else:
+                self._data.qpos[qpos_addrs[0]] = target_raw
+
+    def sync_actuator_targets(self) -> None:
+        """根据 forward 后的 actuator length 同步 position/velocity ctrl。"""
+        for logical_name, actuator in self._actuator_map.items():
+            ctrl_index = self._ctrl_indices.get(logical_name)
+            if ctrl_index is None:
+                continue
+            if actuator.control_mode in ("position", "prismatic"):
+                target = float(self._data.actuator_length[ctrl_index])
+                if bool(self._model.actuator_ctrllimited[ctrl_index]):
+                    min_ctrl = float(self._model.actuator_ctrlrange[ctrl_index][0])
+                    max_ctrl = float(self._model.actuator_ctrlrange[ctrl_index][1])
+                    if target < min_ctrl or target > max_ctrl:
+                        raise ValueError(
+                            f"初始位置 {logical_name} 对应 actuator target={target} "
+                            f"超出模型 ctrlrange [{min_ctrl}, {max_ctrl}]"
+                        )
+                self._data.ctrl[ctrl_index] = target
+            elif actuator.control_mode == "velocity":
+                self._data.ctrl[ctrl_index] = 0.0
 
     def get_state(self) -> JointState:
         """从 MuJoCo 读取状态，返回 JointState（弧度/毫米）。"""

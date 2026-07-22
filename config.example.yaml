@@ -13,6 +13,12 @@ model_path: ./model.xml  # MuJoCo XML 场景路径；可用相对路径或绝对
 # 控制周期频率（Hz），缺省 50；与 dataflow 中 tick 间隔一致（50 → 20ms）
 control_hz: 50
 
+# 可选：启动和 reset_scene 后的关节位置，key 使用全局逻辑关节名。
+# value 单位与 joints[].unit 一致，仅支持 position/prismatic；未列出的关节保留模型 qpos0。
+# position actuator 的 ctrl 会按 forward 后的 actuator length 自动同步。
+initial_positions:
+  j1: 0.2
+
 joints:
   - name: j1        # 输出到 JointState/JointCommand 的逻辑关节名。
     mode: position  # 控制模式；当前常用 position。
