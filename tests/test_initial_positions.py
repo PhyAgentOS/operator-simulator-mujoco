@@ -8,7 +8,7 @@ import pytest
 from forge_msgs import JointCommand
 
 from mujoco_sim.config import MuJoCoNodeConfig
-from mujoco_sim.main import _build_joints_and_actuators, _reset_simulation_state
+from mujoco_sim.scene import build_joints_and_actuators, reset_simulation_state
 from mujoco_sim.simulator import MuJoCoSimulator
 
 
@@ -47,7 +47,7 @@ def _make_lift_simulator(
     model = mujoco.MjModel.from_xml_string(xml)
     data = mujoco.MjData(model)
     config = MuJoCoNodeConfig.from_dict(_base_config())
-    joints, actuators = _build_joints_and_actuators(config, config.robots[0])
+    joints, actuators = build_joints_and_actuators(config, config.robots[0])
     simulator = MuJoCoSimulator(
         model=model,
         data=data,
@@ -98,7 +98,7 @@ def test_initial_position_sets_qpos_and_position_actuator_target() -> None:
     raw["initial_positions"] = {"lift": 0.2}
     config = MuJoCoNodeConfig.from_dict(raw)
 
-    _reset_simulation_state(model, data, config, {"robot": simulator})
+    reset_simulation_state(model, data, config, {"robot": simulator})
 
     assert data.qpos[0] == pytest.approx(0.2)
     assert data.ctrl[0] == pytest.approx(0.2)
@@ -113,7 +113,7 @@ def test_geared_position_actuator_target_uses_actuator_length() -> None:
     raw["initial_positions"] = {"lift": 0.2}
     config = MuJoCoNodeConfig.from_dict(raw)
 
-    _reset_simulation_state(model, data, config, {"robot": simulator})
+    reset_simulation_state(model, data, config, {"robot": simulator})
 
     assert data.qpos[0] == pytest.approx(0.2)
     assert data.ctrl[0] == pytest.approx(0.4)
@@ -143,7 +143,7 @@ def test_initial_position_outside_model_ctrlrange_is_rejected() -> None:
     config = MuJoCoNodeConfig.from_dict(raw)
 
     with pytest.raises(ValueError, match="超出模型 ctrlrange"):
-        _reset_simulation_state(model, data, config, {"robot": simulator})
+        reset_simulation_state(model, data, config, {"robot": simulator})
 
 
 def test_derived_initial_position_updates_source_joints_and_tendon_target() -> None:
@@ -196,7 +196,7 @@ def test_derived_initial_position_updates_source_joints_and_tendon_target() -> N
     config = MuJoCoNodeConfig.from_dict(raw)
     model = mujoco.MjModel.from_xml_string(xml)
     data = mujoco.MjData(model)
-    joints, actuators = _build_joints_and_actuators(config, config.robots[0])
+    joints, actuators = build_joints_and_actuators(config, config.robots[0])
     derived = config.derived_state_cfg["gripper"]
     simulator = MuJoCoSimulator(
         model=model,
@@ -212,7 +212,7 @@ def test_derived_initial_position_updates_source_joints_and_tendon_target() -> N
         },
     )
 
-    _reset_simulation_state(model, data, config, {"robot": simulator})
+    reset_simulation_state(model, data, config, {"robot": simulator})
 
     assert data.qpos[0] == pytest.approx(0.02)
     assert data.qpos[1] == pytest.approx(-0.02)

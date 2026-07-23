@@ -27,7 +27,7 @@ build = [
 
 [tool.uv.sources]
 forge-common = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", rev = "83be2093b80310c438fa8f1d0d9a593123469d7d", subdirectory = "packages/common" }
-forge-msgs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", rev = "83be2093b80310c438fa8f1d0d9a593123469d7d", subdirectory = "packages/msgs" }
+forge-msgs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", rev = "8fc666c56eafc212a994970c7af349e0668494ac", subdirectory = "packages/msgs" }
 
 [build-system]
 requires = ["hatchling"]

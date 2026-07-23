@@ -31,6 +31,14 @@ class JointConfig:
         self.unit = unit
 
 
+@dataclass(frozen=True)
+class KinematicPlanarBaseConfig:
+    """由 LocomotionCommand 驱动的 MuJoCo mocap 平面底盘。"""
+
+    body: str
+    command_timeout_sec: float | None = None
+
+
 @dataclass
 class RobotConfig:
     """单个机器人的 joint -> actuator 映射配置。"""
@@ -142,6 +150,8 @@ class MuJoCoNodeConfig:
     # - id: 下游识别用的唯一标识（推荐用 robot_id，但也可用自定义 id）
     # - body_name: MuJoCo XML 中 body 的 name；若 id 恰好等于某个 robot_id，则允许使用该 robot 的 prefix 拼接
     pose_targets: dict[str, str] = field(default_factory=dict)
+    # 可选：通过 mocap body 消费 LocomotionCommand，按机体系速度做平面运动。
+    kinematic_planar_base: KinematicPlanarBaseConfig | None = None
 
     @property
     def control_period_sec(self) -> float:
@@ -308,6 +318,36 @@ class MuJoCoNodeConfig:
         if control_hz <= 0:
             raise ValueError("control_hz 必须大于 0")
 
+        kinematic_planar_base_raw = data.get("kinematic_planar_base")
+        kinematic_planar_base: KinematicPlanarBaseConfig | None = None
+        if kinematic_planar_base_raw is not None:
+            if not isinstance(kinematic_planar_base_raw, dict):
+                raise ValueError("kinematic_planar_base 必须是字典")
+
+            body_raw = kinematic_planar_base_raw.get("body")
+            if not isinstance(body_raw, str) or not body_raw.strip():
+                raise ValueError("kinematic_planar_base.body 必须是非空字符串")
+
+            timeout_raw = kinematic_planar_base_raw.get("command_timeout_sec")
+            timeout: float | None = None
+            if timeout_raw is not None:
+                if isinstance(timeout_raw, bool) or not isinstance(
+                    timeout_raw, (int, float)
+                ):
+                    raise ValueError(
+                        "kinematic_planar_base.command_timeout_sec 必须是数字"
+                    )
+                timeout = float(timeout_raw)
+                if not math.isfinite(timeout) or timeout <= 0.0:
+                    raise ValueError(
+                        "kinematic_planar_base.command_timeout_sec 必须是有限正数"
+                    )
+
+            kinematic_planar_base = KinematicPlanarBaseConfig(
+                body=body_raw.strip(),
+                command_timeout_sec=timeout,
+            )
+
         pose_targets_raw = data.get("pose_targets", {})
         pose_targets: dict[str, str] = {}
         if pose_targets_raw:
@@ -332,6 +372,7 @@ class MuJoCoNodeConfig:
             image_jpeg_quality=image_jpeg_quality,
             control_hz=control_hz,
             pose_targets=pose_targets,
+            kinematic_planar_base=kinematic_planar_base,
         )
 
     @classmethod

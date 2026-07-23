@@ -13,6 +13,13 @@ model_path: ./model.xml  # MuJoCo XML 场景路径；可用相对路径或绝对
 # 控制周期频率（Hz），缺省 50；与 dataflow 中 tick 间隔一致（50 → 20ms）
 control_hz: 50
 
+# 可选：使用 forge_msgs.LocomotionCommand 驱动一个 MuJoCo mocap body 做平面运动。
+# body 必须在 MJCF 中设置 mocap="true"；vx/vy 使用机体系 m/s，wz 使用 rad/s。
+# command_timeout_sec 按仿真时间计算；超时后自动清零速度。省略时命令保持到下一条命令或 reset_scene。
+# kinematic_planar_base:
+#   body: mobile_base
+#   command_timeout_sec: 0.1
+
 # 可选：启动和 reset_scene 后的关节位置，key 使用全局逻辑关节名。
 # value 单位与 joints[].unit 一致，仅支持 position/prismatic；未列出的关节保留模型 qpos0。
 # position actuator 的 ctrl 会按 forward 后的 actuator length 自动同步。

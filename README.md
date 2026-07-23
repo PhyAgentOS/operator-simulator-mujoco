@@ -1,6 +1,6 @@
 # mujoco_sim
 
-独立的 MuJoCo Dora 仿真节点：接收 `JointCommand`，输出 `JointState`、图像和可选 `PoseSet`。它不接收 `PolicyCommand`，也不接收 `sim_control`；仿真是否运行由上游 policy/dataflow 决定是否持续发送 `tick` 和 `action`。
+独立的 MuJoCo Dora 仿真节点：接收 `JointCommand` 和可选的 `LocomotionCommand`，输出 `JointState`、图像和可选 `PoseSet`。它不接收 `PolicyCommand`，也不接收 `sim_control`；仿真是否运行由上游 policy/dataflow 决定是否持续发送 `tick` 和控制输入。
 
 完整机器人模型和 Forge 端到端 dataflow 由 `forge_runtime` 仓库维护；本仓库只包含节点实现与一个不依赖外部 assets 的最小示例。
 
@@ -19,6 +19,7 @@ uv run python -m mujoco_sim --help
 
 - `tick` 表示一个控制周期，例如 `dora/timer/millis/20` 对应 50Hz。
 - 每个 `tick` 内执行 `round(control_period_sec / model.opt.timestep)` 个 MuJoCo 物理子步。
+- 配置 `kinematic_planar_base` 后，每个物理子步按当前 `LocomotionCommand` 更新一次 mocap body；命令超时也按仿真时间判断。
 - 每个 `tick` 输出一次 `proprio_state`。
 - 相机按仿真时间节流，`image_forward` 中可为每个输出配置 `fps`。
 
@@ -28,6 +29,7 @@ uv run python -m mujoco_sim --help
 
 - `tick`: 控制周期定时器。
 - `action`: `forge_msgs.JointCommand`，按配置映射到 MuJoCo actuator。
+- `locomotion_command`: `forge_msgs.LocomotionCommand`；仅在配置 `kinematic_planar_base` 时生效。
 - `{robot_id}/master_state`: `forge_msgs.JointState`，可直接驱动对应机器人。
 
 输出：
@@ -45,6 +47,28 @@ uv run python -m mujoco_sim --help
 - `--config /path/to/config.yaml`
 - 环境变量 `MUJOCO_NODE_CONFIG`
 - dataflow 节点 `config` 字段
+
+### Kinematic planar base
+
+固定根或不需要轮地接触动力学的模型可以把一个顶层 wrapper body 声明为 MuJoCo mocap body：
+
+```xml
+<body name="mobile_base" mocap="true">
+  <!-- articulated robot subtree -->
+</body>
+```
+
+再配置：
+
+```yaml
+kinematic_planar_base:
+  body: mobile_base
+  command_timeout_sec: 0.1
+```
+
+`locomotion_command` 使用标准机体系语义：`vx` 向前为正、`vy` 向左为正，单位 m/s；`wz` 逆时针为正，单位 rad/s。节点把机体系线速度旋转到世界系，并在每个物理子步直接更新 mocap body 的 X/Y 和绕世界 Z 轴的 yaw；Z 以及初始 roll/pitch 保持不变。
+
+`command_timeout_sec` 可选并按仿真时间计算。超时后速度自动清零；省略时最后一条命令保持到下一条命令或 `reset_scene`。`reset_scene` 始终恢复 MJCF 中的 mocap 初始位姿并清除当前移动命令。未配置此节时，现有 joint-only 行为不变。
 
 ### 初始关节位置
 
@@ -141,6 +165,7 @@ depth_unit_scale: 1.0
   inputs:
     tick: dora/timer/millis/20
     action: <上游 JointCommand 源>
+    locomotion_command: <上游 LocomotionCommand 源>  # 仅配置 kinematic_planar_base 时需要
   outputs:
     - proprio_state
     - pose_set
@@ -156,7 +181,7 @@ cd examples/minimal
 uv run dora run dataflow.yaml
 ```
 
-运行时 topic 名保持旧约定 `action` / `proprio_state`，payload 使用 `JointCommand` / `JointState`。
+运行时 joint topic 名保持旧约定 `action` / `proprio_state`，payload 使用 `JointCommand` / `JointState`；可选移动输入固定为 `locomotion_command`，payload 使用 `LocomotionCommand`。
 
 ## 构建独立二进制
 
