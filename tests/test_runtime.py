@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from forge_msgs import LocomotionCommand, PoseSet
+from forge_msgs import JointCommand, LocomotionCommand, PoseSet
 
 from mujoco_sim.config import MuJoCoNodeConfig
 from mujoco_sim import runtime as runtime_module
@@ -69,6 +69,98 @@ def _config(model_path: Path, *, with_camera: bool = False) -> MuJoCoNodeConfig:
     if with_camera:
         raw["image_forward"] = {"unused": "unused_image"}
     return MuJoCoNodeConfig.from_dict(raw)
+
+
+def _two_actuator_config(tmp_path: Path) -> MuJoCoNodeConfig:
+    model_path = tmp_path / "two_actuators.xml"
+    model_path.write_text(
+        """
+        <mujoco>
+          <option gravity="0 0 0" timestep="0.01"/>
+          <worldbody>
+            <body>
+              <joint name="arm_joint" type="hinge" axis="0 0 1"/>
+              <geom type="sphere" size="0.05" mass="1"/>
+            </body>
+            <body pos="0.2 0 0">
+              <joint name="gripper_joint" type="slide" axis="1 0 0"/>
+              <geom type="sphere" size="0.05" mass="1"/>
+            </body>
+          </worldbody>
+          <actuator>
+            <position name="arm_motor" joint="arm_joint" kp="10"/>
+            <position name="gripper_motor" joint="gripper_joint" kp="10"/>
+          </actuator>
+        </mujoco>
+        """,
+        encoding="utf-8",
+    )
+    return MuJoCoNodeConfig.from_dict(
+        {
+            "model_path": str(model_path),
+            "joints": [
+                {"name": "arm", "mode": "position", "unit": "radians"},
+                {"name": "gripper", "mode": "position", "unit": "meters"},
+            ],
+            "robots": [
+                {
+                    "id": "robot",
+                    "joints": ["arm", "gripper"],
+                    "actuator_order": ["arm_motor", "gripper_motor"],
+                    "joint_to_actuator": {
+                        "arm": "arm_motor",
+                        "gripper": "gripper_motor",
+                    },
+                }
+            ],
+            "control_hz": 50.0,
+        }
+    )
+
+
+def test_runtime_accepts_named_sparse_action_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    node = FakeNode([])
+    monkeypatch.setattr(runtime_module, "Node", lambda: node)
+    runtime = runtime_module.MuJoCoNodeRuntime(_config(_write_model(tmp_path)))
+
+    runtime._handle_input(
+        {
+            "type": "INPUT",
+            "id": "action/arm",
+            "value": JointCommand(name=["joint"], position=[0.4]).to_arrow(),
+        }
+    )
+
+    assert float(runtime.data.ctrl[0]) == pytest.approx(0.4)
+
+
+def test_disjoint_sparse_actions_retain_omitted_actuator_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    node = FakeNode([])
+    monkeypatch.setattr(runtime_module, "Node", lambda: node)
+    runtime = runtime_module.MuJoCoNodeRuntime(_two_actuator_config(tmp_path))
+
+    runtime._handle_input(
+        {
+            "type": "INPUT",
+            "id": "action/arm",
+            "value": JointCommand(name=["arm"], position=[0.4]).to_arrow(),
+        }
+    )
+    runtime._handle_input(
+        {
+            "type": "INPUT",
+            "id": "action/gripper",
+            "value": JointCommand(name=["gripper"], position=[0.02]).to_arrow(),
+        }
+    )
+
+    assert list(runtime.data.ctrl) == pytest.approx([0.4, 0.02])
 
 
 def test_runtime_locomotion_tick_and_reset_orchestration(

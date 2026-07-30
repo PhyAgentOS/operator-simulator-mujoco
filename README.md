@@ -28,7 +28,7 @@ uv run python -m mujoco_sim --help
 输入：
 
 - `tick`: 控制周期定时器。
-- `action`: `forge_msgs.JointCommand`，按配置映射到 MuJoCo actuator。
+- `action` / `action/<source>`: `forge_msgs.JointCommand`，按配置映射到 MuJoCo actuator。命令是 sparse update：只写 `name` 中列出的 actuator，未列出的 actuator 保持原控制目标。
 - `locomotion_command`: `forge_msgs.LocomotionCommand`；仅在配置 `kinematic_planar_base` 时生效。
 - `{robot_id}/master_state`: `forge_msgs.JointState`，可直接驱动对应机器人。
 

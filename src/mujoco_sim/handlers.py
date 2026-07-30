@@ -14,8 +14,19 @@ def _values_by_name(message: JointCommand | JointState, field: str) -> dict[str,
     return dict(zip(message.name, values, strict=True))
 
 
-def build_robot_command(command: JointCommand, robot: RobotConfig) -> JointCommand:
-    """Map global joint command names to this robot's actuator names."""
+def build_robot_command(
+    command: JointCommand, robot: RobotConfig
+) -> JointCommand | None:
+    """Map only joints updated by this command to one robot's actuators."""
+
+    command_names = set(command.name)
+    selected = [
+        (joint_name, actuator_name)
+        for joint_name, actuator_name in robot.joint_to_actuator.items()
+        if joint_name in command_names
+    ]
+    if not selected:
+        return None
 
     source = {
         "position": _values_by_name(command, "position"),
@@ -24,29 +35,21 @@ def build_robot_command(command: JointCommand, robot: RobotConfig) -> JointComma
         "kp": _values_by_name(command, "kp"),
         "kd": _values_by_name(command, "kd"),
     }
+    selected_joint_names = [joint_name for joint_name, _ in selected]
 
-    names: list[str] = []
-    position: list[float] = []
-    velocity: list[float] = []
-    effort: list[float] = []
-    kp: list[float] = []
-    kd: list[float] = []
-
-    for joint_name, actuator_name in robot.joint_to_actuator.items():
-        names.append(actuator_name)
-        position.append(source["position"].get(joint_name, 0.0))
-        velocity.append(source["velocity"].get(joint_name, 0.0))
-        effort.append(source["effort"].get(joint_name, 0.0))
-        kp.append(source["kp"].get(joint_name, 0.0))
-        kd.append(source["kd"].get(joint_name, 0.0))
+    def selected_values(field: str) -> list[float]:
+        if not getattr(command, field):
+            return []
+        return [source[field][joint_name] for joint_name in selected_joint_names]
 
     return JointCommand(
-        name=names,
-        position=position,
-        velocity=velocity,
-        effort=effort,
-        kp=kp,
-        kd=kd,
+        name=[actuator_name for _, actuator_name in selected],
+        mode=getattr(command, "mode", "position"),
+        position=selected_values("position"),
+        velocity=selected_values("velocity"),
+        effort=selected_values("effort"),
+        kp=selected_values("kp"),
+        kd=selected_values("kd"),
     )
 
 

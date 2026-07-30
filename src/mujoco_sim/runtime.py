@@ -127,7 +127,7 @@ class MuJoCoNodeRuntime:
                 self._handle_sim_command(event)
             case "tick":
                 self._handle_tick()
-            case "action":
+            case _ if input_id == "action" or input_id.startswith("action/"):
                 self._handle_action(event)
             case "locomotion_command":
                 self._handle_locomotion(event)
@@ -269,7 +269,8 @@ class MuJoCoNodeRuntime:
         command = JointCommand.from_arrow(event["value"])
         for robot in self.config.robots:
             robot_command = build_robot_command(command, robot)
-            self.simulators[robot.id].set_command(robot_command)
+            if robot_command is not None:
+                self.simulators[robot.id].set_command(robot_command)
 
     def _handle_locomotion(self, event: dict[str, Any]) -> None:
         if self.planar_base is None:
