@@ -79,12 +79,12 @@ epath = [
 [[package]]
 name = "forge-common"
 version = "0.1.0"
-source = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git?subdirectory=packages%2Fcommon&rev=83be2093b80310c438fa8f1d0d9a593123469d7d#83be2093b80310c438fa8f1d0d9a593123469d7d" }
+source = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git?subdirectory=packages%2Fcommon&rev=9f4203dc05b156a238f91f72b7cb28e8fce7fca9#9f4203dc05b156a238f91f72b7cb28e8fce7fca9" }
 
 [[package]]
 name = "forge-msgs"
 version = "0.1.0"
-source = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git?subdirectory=packages%2Fmsgs&rev=8fc666c56eafc212a994970c7af349e0668494ac#8fc666c56eafc212a994970c7af349e0668494ac" }
+source = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git?subdirectory=packages%2Fmsgs&rev=9f4203dc05b156a238f91f72b7cb28e8fce7fca9#9f4203dc05b156a238f91f72b7cb28e8fce7fca9" }
 dependencies = [
     { name = "numpy" },
     { name = "pillow" },
@@ -188,8 +188,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "dora-rs", specifier = "==0.4.1" },
-    { name = "forge-common", git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git?subdirectory=packages%2Fcommon&rev=83be2093b80310c438fa8f1d0d9a593123469d7d" },
-    { name = "forge-msgs", git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git?subdirectory=packages%2Fmsgs&rev=8fc666c56eafc212a994970c7af349e0668494ac" },
+    { name = "forge-common", git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git?subdirectory=packages%2Fcommon&rev=9f4203dc05b156a238f91f72b7cb28e8fce7fca9" },
+    { name = "forge-msgs", git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git?subdirectory=packages%2Fmsgs&rev=9f4203dc05b156a238f91f72b7cb28e8fce7fca9" },
     { name = "mujoco", specifier = "==3.3.7" },
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "opencv-python" },
