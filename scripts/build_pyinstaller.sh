@@ -38,4 +38,11 @@ if [[ ! -f "${DIST_FILE}" ]]; then
   exit 1
 fi
 
-echo "==> [mujoco_sim] Built ${DIST_FILE}"
+EXPECTED_VERSION="$("${VENV_DIR}/bin/python" -c 'import importlib.metadata; print("mujoco-sim " + importlib.metadata.version("mujoco-sim"))')"
+ACTUAL_VERSION="$("${DIST_FILE}" --version)"
+if [[ "${ACTUAL_VERSION}" != "${EXPECTED_VERSION}" ]]; then
+  echo "ERROR: version mismatch: expected '${EXPECTED_VERSION}', got '${ACTUAL_VERSION}'" >&2
+  exit 1
+fi
+
+echo "==> [mujoco_sim] Built ${DIST_FILE} (${ACTUAL_VERSION})"

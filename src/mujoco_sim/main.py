@@ -14,12 +14,18 @@ import sys
 if "MUJOCO_GL" not in os.environ:
     os.environ["MUJOCO_GL"] = "glfw" if platform.system() == "Windows" else "egl"
 
+from . import __version__
 from .config import load_config
 from .runtime import start_runtime
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="MuJoCo dora 节点")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"mujoco-sim {__version__}",
+    )
     parser.add_argument(
         "--config",
         type=str,

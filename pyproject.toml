@@ -1,13 +1,13 @@
 [project]
 name = "mujoco-sim"
-version = "0.1.0"
+version = "1.0.0"
 description = "Standalone MuJoCo simulator node for Forge dataflows"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "dora-rs==0.4.1",
-    "forge-common",
-    "forge-msgs",
+    "forge-common>=1.0.0,<2",
+    "forge-msgs>=1.0.0,<2",
     "mujoco==3.3.7",
     "numpy>=2.0.0",
     "opencv-python",
@@ -26,8 +26,8 @@ build = [
 ]
 
 [tool.uv.sources]
-forge-common = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", rev = "9f4203dc05b156a238f91f72b7cb28e8fce7fca9", subdirectory = "packages/common" }
-forge-msgs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", rev = "9f4203dc05b156a238f91f72b7cb28e8fce7fca9", subdirectory = "packages/msgs" }
+forge-common = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", tag = "forge-common-v1.0.0", subdirectory = "packages/common" }
+forge-msgs = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git", tag = "forge-msgs-v1.0.0", subdirectory = "packages/msgs" }
 
 [build-system]
 requires = ["hatchling"]
