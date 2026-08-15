@@ -11,4 +11,4 @@ def test_cli_version(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixt
         cli()
 
     assert exc_info.value.code == 0
-    assert capsys.readouterr().out == "mujoco-sim 1.0.0\n"
+    assert capsys.readouterr().out == "mujoco-sim 1.1.0\n"

@@ -72,12 +72,15 @@ kinematic_planar_base:
 
 ### 初始关节位置
 
-`initial_positions` 可覆盖 MuJoCo 模型的 `qpos0`，并在节点启动和收到 `reset_scene` 时应用：
+`initial_state.joint_positions` 可覆盖 MuJoCo 模型的 `qpos0`，并在节点启动和收到 `reset_scene` 时应用：
 
 ```yaml
-initial_positions:
-  lift: 0.2
+initial_state:
+  joint_positions:
+    lift: 0.2
 ```
+
+`initial_state` 是场景级扩展点。当前仅支持 `joint_positions`；未来可在同一层级增加物体位姿、速度或 MuJoCo keyframe，而无需改变关节位置配置路径。未实现的字段会明确报错，不会被静默忽略。
 
 - key 必须是顶层 `joints` 中声明的全局逻辑关节名；进入每个 robot 时按 `joint_to_actuator` 映射。
 - value 单位与对应 `joints[].unit` 一致，例如 `radians`、`meters` 或 `millimeters`；仅支持 `position` / `prismatic` 关节。

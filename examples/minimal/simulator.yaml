@@ -1,7 +1,8 @@
 model_path: ./model.xml
 control_hz: 50
-initial_positions:
-  joint1: 0.25
+initial_state:
+  joint_positions:
+    joint1: 0.25
 
 joints:
   - name: joint1

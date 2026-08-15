@@ -48,7 +48,12 @@ def _write_model(tmp_path: Path) -> Path:
     return model_path
 
 
-def _config(model_path: Path, *, with_camera: bool = False) -> MuJoCoNodeConfig:
+def _config(
+    model_path: Path,
+    *,
+    with_camera: bool = False,
+    initial_joint_position: float | None = None,
+) -> MuJoCoNodeConfig:
     raw: dict[str, Any] = {
         "model_path": str(model_path),
         "joints": [
@@ -68,6 +73,10 @@ def _config(model_path: Path, *, with_camera: bool = False) -> MuJoCoNodeConfig:
     }
     if with_camera:
         raw["image_forward"] = {"unused": "unused_image"}
+    if initial_joint_position is not None:
+        raw["initial_state"] = {
+            "joint_positions": {"joint": initial_joint_position}
+        }
     return MuJoCoNodeConfig.from_dict(raw)
 
 
@@ -116,6 +125,32 @@ def _two_actuator_config(tmp_path: Path) -> MuJoCoNodeConfig:
             "control_hz": 50.0,
         }
     )
+
+
+def test_runtime_applies_initial_joint_position_on_startup_and_reset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    node = FakeNode([])
+    monkeypatch.setattr(runtime_module, "Node", lambda: node)
+    config = _config(_write_model(tmp_path), initial_joint_position=0.3)
+    runtime = runtime_module.MuJoCoNodeRuntime(config)
+
+    assert float(runtime.data.qpos[0]) == pytest.approx(0.3)
+    assert float(runtime.data.ctrl[0]) == pytest.approx(0.3)
+
+    runtime.data.qpos[0] = 0.6
+    runtime.data.ctrl[0] = 0.6
+    runtime._handle_input(
+        {
+            "type": "INPUT",
+            "id": "sim_command",
+            "value": json.dumps({"command": "reset_scene"}).encode("utf-8"),
+        }
+    )
+
+    assert float(runtime.data.qpos[0]) == pytest.approx(0.3)
+    assert float(runtime.data.ctrl[0]) == pytest.approx(0.3)
 
 
 def test_runtime_accepts_named_sparse_action_input(

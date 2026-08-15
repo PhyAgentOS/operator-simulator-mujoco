@@ -57,27 +57,61 @@ def _make_lift_simulator(
     return model, data, simulator
 
 
-def test_config_parses_initial_positions() -> None:
+def test_config_parses_initial_state_joint_positions() -> None:
     raw = _base_config()
-    raw["initial_positions"] = {"lift": 0.2}
+    raw["initial_state"] = {"joint_positions": {"lift": 0.2}}
 
     config = MuJoCoNodeConfig.from_dict(raw)
 
-    assert config.initial_positions == {"lift": 0.2}
+    assert config.initial_state.joint_positions == {"lift": 0.2}
+
+
+def test_config_rejects_removed_initial_positions_field() -> None:
+    raw = _base_config()
+    raw["initial_positions"] = {"lift": 0.2}
+
+    with pytest.raises(ValueError, match="已移除"):
+        MuJoCoNodeConfig.from_dict(raw)
+
+
+def test_config_rejects_removed_positions_field() -> None:
+    raw = _base_config()
+    raw["positions"] = {"initial": {"lift": 0.2}}
+
+    with pytest.raises(ValueError, match="已移除"):
+        MuJoCoNodeConfig.from_dict(raw)
+
+
+def test_config_rejects_unsupported_initial_state_field() -> None:
+    raw = _base_config()
+    raw["initial_state"] = {"body_poses": {}}
+
+    with pytest.raises(ValueError, match="尚未支持的字段"):
+        MuJoCoNodeConfig.from_dict(raw)
+
+
+def test_config_rejects_null_joint_positions() -> None:
+    raw = _base_config()
+    raw["initial_state"] = {"joint_positions": None}
+
+    with pytest.raises(ValueError, match="initial_state.joint_positions 必须是"):
+        MuJoCoNodeConfig.from_dict(raw)
 
 
 @pytest.mark.parametrize("value", [True, "0.2", None, math.inf, math.nan])
 def test_config_rejects_non_finite_or_non_numeric_initial_position(value: object) -> None:
     raw = _base_config()
-    raw["initial_positions"] = {"lift": value}
+    raw["initial_state"] = {"joint_positions": {"lift": value}}
 
-    with pytest.raises(ValueError, match="initial_positions.lift"):
+    with pytest.raises(
+        ValueError, match=r"initial_state\.joint_positions\.lift"
+    ):
         MuJoCoNodeConfig.from_dict(raw)
 
 
 def test_config_rejects_unknown_initial_position_joint() -> None:
     raw = _base_config()
-    raw["initial_positions"] = {"unknown": 0.2}
+    raw["initial_state"] = {"joint_positions": {"unknown": 0.2}}
 
     with pytest.raises(ValueError, match="未知关节 'unknown'"):
         MuJoCoNodeConfig.from_dict(raw)
@@ -86,7 +120,7 @@ def test_config_rejects_unknown_initial_position_joint() -> None:
 def test_config_rejects_initial_position_for_velocity_joint() -> None:
     raw = _base_config()
     raw["joints"] = [{"name": "lift", "mode": "velocity", "unit": "meters/s"}]
-    raw["initial_positions"] = {"lift": 0.2}
+    raw["initial_state"] = {"joint_positions": {"lift": 0.2}}
 
     with pytest.raises(ValueError, match="仅支持 position/prismatic"):
         MuJoCoNodeConfig.from_dict(raw)
@@ -95,7 +129,7 @@ def test_config_rejects_initial_position_for_velocity_joint() -> None:
 def test_initial_position_sets_qpos_and_position_actuator_target() -> None:
     model, data, simulator = _make_lift_simulator()
     raw = _base_config()
-    raw["initial_positions"] = {"lift": 0.2}
+    raw["initial_state"] = {"joint_positions": {"lift": 0.2}}
     config = MuJoCoNodeConfig.from_dict(raw)
 
     reset_simulation_state(model, data, config, {"robot": simulator})
@@ -110,7 +144,7 @@ def test_initial_position_sets_qpos_and_position_actuator_target() -> None:
 def test_geared_position_actuator_target_uses_actuator_length() -> None:
     model, data, simulator = _make_lift_simulator(gear=2.0)
     raw = _base_config()
-    raw["initial_positions"] = {"lift": 0.2}
+    raw["initial_state"] = {"joint_positions": {"lift": 0.2}}
     config = MuJoCoNodeConfig.from_dict(raw)
 
     reset_simulation_state(model, data, config, {"robot": simulator})
@@ -139,7 +173,7 @@ def test_model_ctrlrange_overrides_generic_unit_fallback_limit() -> None:
 def test_initial_position_outside_model_ctrlrange_is_rejected() -> None:
     model, data, simulator = _make_lift_simulator()
     raw = _base_config()
-    raw["initial_positions"] = {"lift": 0.9}
+    raw["initial_state"] = {"joint_positions": {"lift": 0.9}}
     config = MuJoCoNodeConfig.from_dict(raw)
 
     with pytest.raises(ValueError, match="超出模型 ctrlrange"):
@@ -191,7 +225,7 @@ def test_derived_initial_position_updates_source_joints_and_tendon_target() -> N
                 "joint_to_actuator": {"gripper": "gripper"},
             }
         ],
-        "initial_positions": {"gripper": 40.0},
+        "initial_state": {"joint_positions": {"gripper": 40.0}},
     }
     config = MuJoCoNodeConfig.from_dict(raw)
     model = mujoco.MjModel.from_xml_string(xml)

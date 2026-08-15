@@ -20,11 +20,14 @@ control_hz: 50
 #   body: mobile_base
 #   command_timeout_sec: 0.1
 
-# 可选：启动和 reset_scene 后的关节位置，key 使用全局逻辑关节名。
-# value 单位与 joints[].unit 一致，仅支持 position/prismatic；未列出的关节保留模型 qpos0。
+# 可选：场景初始状态，在启动和 reset_scene 后应用。
+# joint_positions 的 key 使用全局逻辑关节名，value 单位与 joints[].unit 一致。
+# 仅支持 position/prismatic；未列出的关节保留模型 qpos0。
 # position actuator 的 ctrl 会按 forward 后的 actuator length 自动同步。
-initial_positions:
-  j1: 0.2
+# 后续可在 initial_state 下扩展物体位姿、速度或 MuJoCo keyframe。
+initial_state:
+  joint_positions:
+    j1: 0.2
 
 joints:
   - name: j1        # 输出到 JointState/JointCommand 的逻辑关节名。

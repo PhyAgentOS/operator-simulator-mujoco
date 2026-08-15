@@ -239,21 +239,23 @@ def reset_simulation_state(
     mujoco.mj_resetData(model, data)
     if planar_base is not None:
         planar_base.stop()
+    joint_positions = config.initial_state.joint_positions
     applied_joint_names: set[str] = set()
 
     for robot in config.robots:
         actuator_positions: dict[str, float] = {}
         for joint_name, actuator_name in robot.joint_to_actuator.items():
-            if joint_name not in config.initial_positions:
+            if joint_name not in joint_positions:
                 continue
-            actuator_positions[actuator_name] = config.initial_positions[joint_name]
+            actuator_positions[actuator_name] = joint_positions[joint_name]
             applied_joint_names.add(joint_name)
         simulators[robot.id].apply_initial_positions(actuator_positions)
 
-    unapplied = sorted(set(config.initial_positions) - applied_joint_names)
+    unapplied = sorted(set(joint_positions) - applied_joint_names)
     if unapplied:
         raise ValueError(
-            f"initial_positions 关节未分配给任何 robot: {unapplied}"
+            "initial_state.joint_positions 关节未分配给任何 robot: "
+            f"{unapplied}"
         )
 
     mujoco.mj_forward(model, data)

@@ -67,6 +67,13 @@ class RobotConfig:
 
 
 @dataclass
+class InitialStateConfig:
+    """场景初始状态；后续可扩展物体位姿、速度或 MuJoCo keyframe。"""
+
+    joint_positions: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
 class DerivedActuatorStateConfig:
     """某个逻辑关节/执行器的派生状态配置。
 
@@ -136,8 +143,8 @@ class MuJoCoNodeConfig:
     model_path: str
     joints: list[JointConfig]
     robots: list[RobotConfig]
-    # 全局逻辑关节名 -> 启动/场景重置位置；单位与对应 joints[].unit 一致。
-    initial_positions: dict[str, float] = field(default_factory=dict)
+    # 场景初始状态；当前支持关节位置，单位与对应 joints[].unit 一致。
+    initial_state: InitialStateConfig = field(default_factory=InitialStateConfig)
     # name -> DerivedActuatorStateConfig，用于如 gripper 由 joint7/joint8 合成的场景
     derived_state_cfg: dict[str, DerivedActuatorStateConfig] = field(
         default_factory=dict
@@ -258,44 +265,63 @@ class MuJoCoNodeConfig:
                         all_joint_names.append(j_name)
             joints = [JointConfig(name=n) for n in all_joint_names]
 
-        initial_positions_raw = data.get("initial_positions", {})
-        if initial_positions_raw is None:
-            initial_positions_raw = {}
-        if not isinstance(initial_positions_raw, dict):
-            raise ValueError("initial_positions 必须是 {joint_name: position} 的字典")
+        if "initial_positions" in data or "positions" in data:
+            raise ValueError(
+                "initial_positions/positions 已移除，请改用 "
+                "initial_state.joint_positions"
+            )
+
+        initial_state_raw = data.get("initial_state", {})
+        if not isinstance(initial_state_raw, dict):
+            raise ValueError("initial_state 必须是字典")
+
+        unknown_state_fields = sorted(
+            str(field_name)
+            for field_name in initial_state_raw
+            if field_name != "joint_positions"
+        )
+        if unknown_state_fields:
+            raise ValueError(
+                "initial_state 包含尚未支持的字段: "
+                f"{unknown_state_fields}，可用值: ['joint_positions']"
+            )
+
+        joint_positions_raw = initial_state_raw.get("joint_positions", {})
+        if not isinstance(joint_positions_raw, dict):
+            raise ValueError(
+                "initial_state.joint_positions 必须是 "
+                "{joint_name: position} 的字典"
+            )
 
         known_joint_names = {joint.name for joint in joints}
-        initial_positions: dict[str, float] = {}
-        for raw_name, raw_value in initial_positions_raw.items():
+        joint_positions: dict[str, float] = {}
+        for raw_name, raw_value in joint_positions_raw.items():
             name = str(raw_name).strip()
+            value_path = f"initial_state.joint_positions.{name}"
             if name not in known_joint_names:
                 raise ValueError(
-                    f"initial_positions 包含未知关节 '{name}'，"
+                    f"initial_state.joint_positions 包含未知关节 '{name}'，"
                     f"可用值: {sorted(known_joint_names)}"
                 )
             if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
-                raise ValueError(
-                    f"initial_positions.{name} 必须是数字，当前: {raw_value!r}"
-                )
+                raise ValueError(f"{value_path} 必须是数字，当前: {raw_value!r}")
             joint = next(joint for joint in joints if joint.name == name)
             if joint.mode not in ("position", "prismatic"):
                 raise ValueError(
-                    f"initial_positions.{name} 仅支持 position/prismatic 关节，"
+                    f"{value_path} 仅支持 position/prismatic 关节，"
                     f"当前 mode: {joint.mode}"
                 )
             derived = derived_state_cfg.get(name)
             if derived is not None and (
                 not math.isfinite(derived.state_scale) or derived.state_scale == 0.0
             ):
-                raise ValueError(
-                    f"initial_positions.{name} 要求 state_scale 为有限非零数字"
-                )
+                raise ValueError(f"{value_path} 要求 state_scale 为有限非零数字")
             value = float(raw_value)
             if not math.isfinite(value):
-                raise ValueError(
-                    f"initial_positions.{name} 必须是有限数字，当前: {raw_value!r}"
-                )
-            initial_positions[name] = value
+                raise ValueError(f"{value_path} 必须是有限数字，当前: {raw_value!r}")
+            joint_positions[name] = value
+
+        initial_state = InitialStateConfig(joint_positions=joint_positions)
 
         image_forward_raw = data.get("image_forward", {})
         if not isinstance(image_forward_raw, dict):
@@ -365,7 +391,7 @@ class MuJoCoNodeConfig:
             model_path=model_path,
             joints=joints,
             robots=robots,
-            initial_positions=initial_positions,
+            initial_state=initial_state,
             derived_state_cfg=derived_state_cfg,
             image_forward=image_forward,
             image_format=image_format,
