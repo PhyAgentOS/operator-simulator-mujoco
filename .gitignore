@@ -5,13 +5,21 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# Environments
+# Environments and local configuration
 .venv/
 .venv_build/
+.env
+.env.*
+!.env.example
+config.yaml
 
-# Build output
+# Build and release output
 build/
 dist/
+release-stage/
+requirements-audit.txt
+mujoco_sim-v*.tar.gz
+mujoco_sim-v*.tar.gz.sha256
 
 # Dora runtime output
 out/

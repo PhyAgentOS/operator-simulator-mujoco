@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python 3.12
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install rendering runtime libraries
+        run: sudo apt-get update && sudo apt-get install --yes libegl1 libgl1 libosmesa6 libglfw3
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "0.12.0"
+          enable-cache: true
+
+      - name: Verify lock file
+        run: uv lock --check
+
+      - name: Install locked dependencies
+        run: uv sync --frozen --python 3.12
+
+      - name: Run tests
+        env:
+          MUJOCO_GL: osmesa
+        run: uv run --frozen pytest tests -q
+
+      - name: Run headless render smoke test
+        env:
+          MUJOCO_GL: osmesa
+        run: |
+          uv run --frozen python - <<'PY'
+          import mujoco
+          from mujoco_sim.rendering import _create_renderer
+
+          model = mujoco.MjModel.from_xml_string(
+              '<mujoco><worldbody><camera name="camera" pos="0 0 1"/>'
+              '<geom type="sphere" size="0.05"/></worldbody></mujoco>'
+          )
+          data = mujoco.MjData(model)
+          renderer = _create_renderer(model, height=24, width=32)
+          renderer.update_scene(data, camera="camera")
+          assert renderer.render().shape == (24, 32, 3)
+          renderer.close()
+          PY
+
+      - name: Compile Python sources
+        run: uv run --frozen python -m compileall -q src tests examples
+
+      - name: Check package metadata
+        run: uv build
+
+  binary:
+    name: Linux x86_64 binary
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install runtime libraries
+        run: sudo apt-get update && sudo apt-get install --yes libegl1 libgl1 libosmesa6 libglfw3
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "0.12.0"
+          enable-cache: true
+
+      - name: Verify lock file
+        run: uv lock --check
+
+      - name: Build executable
+        env:
+          MUJOCO_GL: osmesa
+        run: bash scripts/build_pyinstaller.sh
+
+      - name: Smoke-test executable
+        run: |
+          dist/mujoco_sim --version
+          dist/mujoco_sim --help
+          file dist/mujoco_sim | grep -q 'ELF 64-bit LSB.*x86-64'

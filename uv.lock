@@ -78,18 +78,26 @@ epath = [
 
 [[package]]
 name = "forge-common"
-version = "1.0.0"
-source = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git?subdirectory=packages%2Fcommon&tag=forge-common-v1.0.0#f155adea4f8928670fb34454e95658d2bd28d032" }
+version = "1.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c5/4c/b12f4982c811596950830905c7d7fecd400b11aba3dc65017ed49df1f7e6/forge_common-1.0.1.tar.gz", hash = "sha256:dcf3483948e072cca5b41cc235de38686fe23a84040b5bf6e90e275c93c37255", size = 7459, upload-time = "2026-08-13T16:21:33.433Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/29/c5/0e3b01f2dcc3af01927f1f935a3488ce87c3c60ebdc25e71c8f705b7202e/forge_common-1.0.1-py3-none-any.whl", hash = "sha256:4d5e14a6f7c717f818241ca2abd2aa82dd77dca563d4446c8eb6d78a3e6bd4cb", size = 8822, upload-time = "2026-08-13T16:21:32.677Z" },
+]
 
 [[package]]
 name = "forge-msgs"
-version = "1.0.0"
-source = { git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git?subdirectory=packages%2Fmsgs&tag=forge-msgs-v1.0.0#f155adea4f8928670fb34454e95658d2bd28d032" }
+version = "1.0.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "pillow" },
     { name = "pyarrow" },
     { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/14/11/d80e481d07bd307dae709221090c0e6019f1a3d31b4e65babc23d8a5205b/forge_msgs-1.0.1.tar.gz", hash = "sha256:91b0421ad898a855d4f36ef1bda7c253e4c25cbf292919cc0ed2074572746bac", size = 24545, upload-time = "2026-08-13T16:22:50.44Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/92/79/f8ff3d369e0ac35ce1c01d0b46df695e5483a0c4e1fe2b6ac5ef3ffc8b86/forge_msgs-1.0.1-py3-none-any.whl", hash = "sha256:d3d01d576824a2c3944bb8117d1ff464c4a2f42c7395e8621f808800c2d2643d", size = 33395, upload-time = "2026-08-13T16:22:49.315Z" },
 ]
 
 [[package]]
@@ -165,7 +173,7 @@ wheels = [
 
 [[package]]
 name = "mujoco-sim"
-version = "1.1.0"
+version = "1.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "dora-rs" },
@@ -188,8 +196,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "dora-rs", specifier = "==0.4.1" },
-    { name = "forge-common", git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git?subdirectory=packages%2Fcommon&tag=forge-common-v1.0.0" },
-    { name = "forge-msgs", git = "https://gitlab.ex-ai.cn/meta-emt/framework/forge.git?subdirectory=packages%2Fmsgs&tag=forge-msgs-v1.0.0" },
+    { name = "forge-common", specifier = ">=1.0.0,<2" },
+    { name = "forge-msgs", specifier = ">=1.0.0,<2" },
     { name = "mujoco", specifier = "==3.3.7" },
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "opencv-python" },

@@ -4,6 +4,8 @@
 
 完整机器人模型和 Forge 端到端 dataflow 由 `forge_runtime` 仓库维护；本仓库只包含节点实现与一个不依赖外部 assets 的最小示例。
 
+本项目由 X-ERA 维护，以 Apache License 2.0 开源。参与开发前请阅读 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+
 ## 安装与开发
 
 需要 Python 3.12 和 [uv](https://docs.astral.sh/uv/)：
@@ -194,3 +196,9 @@ uv run dora run dataflow.yaml
 ```
 
 构建产物固定为 `dist/mujoco_sim`。Forge 部署可以将该 artifact 安装到 `${FORGE_RUNTIME_BIN}/mujoco_sim`，从而保持现有 dataflow 的二进制路径约定。
+
+公开 Release 仅额外发布包含 `mujoco_sim` 的 Linux x86_64 归档及 SHA-256 文件；具体流程见 [`RELEASING.md`](RELEASING.md)。当前二进制以 Ubuntu 24.04 构建环境为基线，需要兼容 glibc 2.39 的 Linux 系统及可用的 EGL、OSMesa 或 GLFW/OpenGL 运行库。
+
+## License
+
+本项目使用 [Apache License 2.0](LICENSE)。
