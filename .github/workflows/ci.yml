@@ -97,7 +97,7 @@ jobs:
 
       - name: Build executable
         env:
-          MUJOCO_GL: osmesa
+          MUJOCO_GL: egl
         run: bash scripts/build_pyinstaller.sh
 
       - name: Smoke-test executable
