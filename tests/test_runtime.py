@@ -6,9 +6,8 @@ from typing import Any
 
 import pytest
 from forge_msgs import JointCommand, LocomotionCommand, PoseSet
-
-from mujoco_sim.config import MuJoCoNodeConfig
 from mujoco_sim import runtime as runtime_module
+from mujoco_sim.config import MuJoCoNodeConfig
 
 
 class FakeNode:
@@ -56,9 +55,7 @@ def _config(
 ) -> MuJoCoNodeConfig:
     raw: dict[str, Any] = {
         "model_path": str(model_path),
-        "joints": [
-            {"name": "joint", "mode": "position", "unit": "radians"}
-        ],
+        "joints": [{"name": "joint", "mode": "position", "unit": "radians"}],
         "robots": [
             {
                 "id": "robot",
@@ -74,9 +71,7 @@ def _config(
     if with_camera:
         raw["image_forward"] = {"unused": "unused_image"}
     if initial_joint_position is not None:
-        raw["initial_state"] = {
-            "joint_positions": {"joint": initial_joint_position}
-        }
+        raw["initial_state"] = {"joint_positions": {"joint": initial_joint_position}}
     return MuJoCoNodeConfig.from_dict(raw)
 
 
@@ -325,3 +320,30 @@ def test_renderer_cleanup_does_not_mask_event_loop_exception(
     with pytest.raises(RuntimeError, match="event loop failed"):
         runtime.run()
     assert renderer.close_count == 1
+
+
+def test_renderer_is_closed_when_dora_registration_fails(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    renderer = Mock()
+    monkeypatch.setattr(
+        runtime_module.rendering, "create_renderer_for_config", lambda *_: renderer
+    )
+    monkeypatch.setattr(
+        runtime_module, "Node", Mock(side_effect=RuntimeError("registration failed"))
+    )
+    with pytest.raises(RuntimeError, match="registration failed"):
+        runtime_module.MuJoCoNodeRuntime(
+            _config(_write_model(tmp_path), with_camera=True)
+        )
+    renderer.close.assert_called_once_with()
+
+
+def test_dora_error_is_a_failed_simulation(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        runtime_module,
+        "Node",
+        lambda: FakeNode([{"type": "ERROR", "error": "transport failed"}]),
+    )
+    runtime = runtime_module.MuJoCoNodeRuntime(_config(_write_model(tmp_path)))
+    assert runtime.run() == 1

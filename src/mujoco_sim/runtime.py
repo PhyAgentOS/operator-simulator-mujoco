@@ -12,6 +12,7 @@ from dora import Node
 from forge_common import get_logger
 from forge_msgs import JointCommand, JointState, LocomotionCommand, Pose, PoseSet
 
+from . import rendering, scene
 from .config import MuJoCoNodeConfig
 from .handlers import (
     build_joint_state,
@@ -19,7 +20,6 @@ from .handlers import (
     robot_state_to_robot_command,
     sim_state_to_robot_state,
 )
-from . import rendering, scene
 
 logger = get_logger(__name__)
 
@@ -76,19 +76,24 @@ class MuJoCoNodeRuntime:
                 )
 
         try:
-            self.cv2_module = rendering.load_cv2_module(self.config)
-        except Exception as error:
-            print(
-                f"[mujoco] image_format={self.config.image_format} "
-                f"需要 opencv-python: {error}",
-                file=sys.stderr,
-            )
-            raise _StartupAborted from error
+            try:
+                self.cv2_module = rendering.load_cv2_module(self.config)
+            except Exception as error:
+                print(
+                    f"[mujoco] image_format={self.config.image_format} "
+                    f"需要 opencv-python: {error}",
+                    file=sys.stderr,
+                )
+                raise _StartupAborted from error
 
-        self.next_camera_time = rendering.initial_camera_times(self.config)
-        self.control_period_sec = self.config.control_period_sec
-        self.physics_dt = float(self.model.opt.timestep)
-        self.node = Node()
+            self.next_camera_time = rendering.initial_camera_times(self.config)
+            self.control_period_sec = self.config.control_period_sec
+            self.physics_dt = float(self.model.opt.timestep)
+            self.node = Node()
+
+        except BaseException:
+            self._close_renderer()
+            raise
 
         self.sim_mode = "RUNNING"
         self.sim_time = 0.0
@@ -109,16 +114,20 @@ class MuJoCoNodeRuntime:
                             f"[mujoco] error: {event.get('error', 'unknown')}",
                             file=sys.stderr,
                         )
-                        break
+                        return 1
                     case _:
                         pass
             return 0
         finally:
-            if self.renderer is not None:
-                try:
-                    self.renderer.close()
-                except Exception:
-                    pass
+            self._close_renderer()
+
+    def _close_renderer(self) -> None:
+        renderer, self.renderer = self.renderer, None
+        if renderer is not None:
+            try:
+                renderer.close()
+            except Exception as error:
+                logger.warning("[mujoco] renderer cleanup failed: %s", error)
 
     def _handle_input(self, event: dict[str, Any]) -> None:
         input_id = event["id"]
@@ -200,21 +209,13 @@ class MuJoCoNodeRuntime:
             y = float(self.data.xpos[body_id][1])
             quaternion = self.data.xquat[body_id]
             theta = math.atan2(
-                2.0
-                * (
-                    quaternion[0] * quaternion[3]
-                    + quaternion[1] * quaternion[2]
-                ),
-                1.0
-                - 2.0
-                * (quaternion[2] ** 2 + quaternion[3] ** 2),
+                2.0 * (quaternion[0] * quaternion[3] + quaternion[1] * quaternion[2]),
+                1.0 - 2.0 * (quaternion[2] ** 2 + quaternion[3] ** 2),
             )
             poses[robot_id] = Pose.from_xy_yaw(x=x, y=y, yaw=theta)
 
         if poses:
-            self.node.send_output(
-                "pose_set", PoseSet.from_poses(poses).to_arrow()
-            )
+            self.node.send_output("pose_set", PoseSet.from_poses(poses).to_arrow())
 
     def _send_camera_outputs(self) -> None:
         if self.renderer is None:
@@ -261,9 +262,7 @@ class MuJoCoNodeRuntime:
             "episode_index": self.episode_index,
             "sim_time": self.sim_time,
         }
-        self.node.send_output(
-            "sim_status", json.dumps(status).encode("utf-8")
-        )
+        self.node.send_output("sim_status", json.dumps(status).encode("utf-8"))
 
     def _handle_action(self, event: dict[str, Any]) -> None:
         command = JointCommand.from_arrow(event["value"])
@@ -295,11 +294,7 @@ class MuJoCoNodeRuntime:
 
         target_robot_id = input_id.removesuffix("/master_state")
         robot_config = next(
-            (
-                robot
-                for robot in self.config.robots
-                if robot.id == target_robot_id
-            ),
+            (robot for robot in self.config.robots if robot.id == target_robot_id),
             None,
         )
         if robot_config:

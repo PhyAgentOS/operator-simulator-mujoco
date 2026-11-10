@@ -1,6 +1,6 @@
 [project]
 name = "mujoco-sim"
-version = "1.1.1"
+version = "2.0.0"
 description = "Standalone MuJoCo simulator node for Dora robotics dataflows"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -19,9 +19,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "dora-rs==0.4.1",
-    "forge-common>=1.0.0,<2",
-    "forge-msgs>=1.0.0,<2",
+    "dora-rs>=1.0.1,<2",
+    "forge-common>=2.1.0,<3",
+    "forge-msgs>=2.0.0,<3",
     "mujoco==3.3.7",
     "numpy>=2.0.0",
     "opencv-python",
