@@ -2,6 +2,14 @@
 
 # MuJoCo simulator
 
+## BREAKING CHANGE: Forge 2.x / Dora 1.x migration
+
+This migration from Forge 1.x / Dora 0.4.x requires coordinated deployment. Align the Forge packages, Dora CLI/coordinator/daemon, this node and its peer nodes before connecting a dataflow; replacing only one node in a Forge 1.x deployment is unsupported. Rebuild and redeploy executable artifacts with the matching environment. Keep `stable/1.x` for deployments that still use the previous stack.
+
+The validated Python baseline is `forge-msgs==2.1.0`, `Pillow==13.0.0`, `forge-common==2.1.0`, the applicable `forge-robot` / `forge-policy` / `forge-kinematics` / `forge-tool` packages at `2.0.0`, and `dora-rs==1.0.1`. Respect this repository's Python and SDK platform requirements. Forge package families have independent versions. Rust nodes retain the published `forge_msgs` crate `2.0.0` with Dora `1.0.1`; Python Msgs `2.1.0` does not require a nonexistent Rust `2.1.0` release. The `forge_msgs.v1` message namespace remains unchanged.
+
+This notice describes the deployment break from the previous stack; it does not declare hardware, real-model or sustained-run acceptance complete. See [this round's verification report](migration/msgs-2.1.0-report.json) for actual tests and outstanding gates.
+
 A standalone Forge simulator with joint/locomotion commands, state/pose outputs and configurable RGB/depth rendering.
 
 ## Migration status
@@ -15,7 +23,7 @@ Forge Common/Msgs and Dora move to the 2.x/1.x lines. Renderers close when later
 ## Runtime and platform
 
 - First validation combination: Dora CLI/coordinator/daemon/node APIs 1.0.1,
-  Forge Msgs 2.0.0 and Common 2.1.0; use only the families required by this node.
+  Forge Msgs 2.1.0 and Common 2.1.0; use only the families required by this node.
 - Forge wire schemas remain `forge_msgs.v1`. Dora 0.x and 1.x cannot share a runtime.
 - Use Python 3.12 for Python builds. Camera-only Python packages may also declare
   Python 3.11 support; test that interpreter separately before claiming it.
