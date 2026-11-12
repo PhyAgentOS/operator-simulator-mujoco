@@ -1,0 +1,157 @@
+{
+  "repository": "operator-simulator-mujoco",
+  "round": "msgs-2.1.0 alignment / 2026-11-12",
+  "breaking_change": "Forge 1.x / Dora 0.4.x to Forge 2.x / Dora 1.x requires aligned Forge packages, runtime services, node peers and rebuilt artifacts. Forge families version independently. forge_msgs.v1 remains unchanged.",
+  "changes": [
+    "Update paired README deployment/version compatibility notice",
+    "Require Python forge-msgs >=2.1.0,<3 and lock public Msgs 2.1.0 / Pillow 13.0.0, preserving all other locked package versions"
+  ],
+  "lock_updates": [
+    {
+      "repo": "operator-simulator-mujoco",
+      "lock": "uv.lock",
+      "command": [
+        "${WORKSPACE}/.tools/bin/uv",
+        "lock",
+        "--upgrade-package",
+        "forge-msgs==2.1.0",
+        "--upgrade-package",
+        "pillow==13.0.0"
+      ],
+      "exit_code": 0,
+      "version_changes": [
+        {
+          "name": "forge-msgs",
+          "before": "2.0.0",
+          "after": "2.1.0"
+        },
+        {
+          "name": "pillow",
+          "before": "12.3.0",
+          "after": "13.0.0"
+        }
+      ]
+    }
+  ],
+  "lock_checks": [
+    {
+      "repo": "operator-simulator-mujoco",
+      "lock": "uv.lock",
+      "check_exit": 0
+    }
+  ],
+  "software_tests": {
+    "repo": "operator-simulator-mujoco",
+    "environment": "${WORKSPACE}/operator-simulator-mujoco/.venv/bin/python",
+    "commands": [
+      [
+        "${WORKSPACE}/.tools/bin/uv",
+        "pip",
+        "install",
+        "--python",
+        "${WORKSPACE}/operator-simulator-mujoco/.venv/bin/python",
+        "--no-deps",
+        "--index-url",
+        "https://pypi.org/simple",
+        "forge-msgs==2.1.0",
+        "pillow==13.0.0"
+      ],
+      [
+        "${WORKSPACE}/operator-simulator-mujoco/.venv/bin/python",
+        "-c",
+        "from importlib.metadata import version; import json; print(json.dumps({n:version(n) for n in ['forge-msgs','pillow','dora-rs']}))"
+      ],
+      [
+        "${WORKSPACE}/.tools/bin/uv",
+        "pip",
+        "check",
+        "--python",
+        "${WORKSPACE}/operator-simulator-mujoco/.venv/bin/python"
+      ],
+      [
+        "${WORKSPACE}/operator-simulator-mujoco/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "--import-mode=importlib"
+      ]
+    ],
+    "scope": "Existing local test environment with exact public Msgs/Pillow update; platform SDK exclusions are reported, not production acceptance.",
+    "update_exit": 0,
+    "versions_exit": 0,
+    "dependency_check_exit": 0,
+    "tests_exit": 0,
+    "test_summary": [
+      "...............................................                          [100%]",
+      "47 passed in 2.98s"
+    ],
+    "installed_versions": {
+      "forge-msgs": "2.1.0",
+      "pillow": "13.0.0",
+      "dora-rs": "1.0.1"
+    }
+  },
+  "dependency_audit": {
+    "repo": "operator-simulator-mujoco",
+    "audit_exit": 0,
+    "findings": [],
+    "skipped": []
+  },
+  "dora_run_records": [
+    {
+      "repo": "operator-simulator-mujoco",
+      "entry": "mujoco",
+      "scope": "Native rendering/startup diagnostic on macOS; Linux binary/rendering acceptance pending.",
+      "mode": "chain",
+      "command": [
+        "${WORKSPACE}/.test-env/bin/dora",
+        "run",
+        "${WORKSPACE}/validation/downstream-msgs210-20261112/native/mujoco/chain/dataflow.yaml",
+        "--stop-after",
+        "4s"
+      ],
+      "exit_code": 1,
+      "error": null,
+      "passed": false,
+      "includes_gateway": true,
+      "status": "diagnostic only / not accepted",
+      "source_report": "native/mujoco/chain/report.json",
+      "runtime_errors": [
+        "2026-11-12T08:15:24.472067Z ERROR node_failure: dora_daemon::spawn::prepared: node exited with error: ExitCode(1) node_id=target dataflow_id=01a1ced3-6a94-774b-aee6-8b8925a7c33b",
+        "16:15:24 ERROR  target: daemon exited with code 1 with stderr output:",
+        "16:15:25 stdout adapter-forge-gateway: 2026-11-12 16:15:25 - forge_gateway.cli - ERROR - gateway startup failed: Could not initiate node from environment variable. For dynamic node, please add a node id in the initialization function.",
+        "2026-11-12T08:15:25.080255Z ERROR node_failure: dora_daemon::spawn::prepared: node exited with error: ExitCode(1) node_id=adapter-forge-gateway dataflow_id=01a1ced3-6a94-774b-aee6-8b8925a7c33b",
+        "16:15:25 ERROR  adapter-forge-gateway: daemon exited with code 1. This error occurred because node `target` exited before connecting to dora."
+      ],
+      "local_evidence": "Full original Dora log is retained under validation/downstream-msgs210-20261112/native/mujoco/chain/dora.log"
+    },
+    {
+      "repo": "operator-simulator-mujoco",
+      "entry": "mujoco",
+      "scope": "Native rendering/startup diagnostic on macOS; Linux binary/rendering acceptance pending.",
+      "mode": "single",
+      "command": [
+        "${WORKSPACE}/.test-env/bin/dora",
+        "run",
+        "${WORKSPACE}/validation/downstream-msgs210-20261112/native/mujoco/single/dataflow.yaml",
+        "--stop-after",
+        "4s"
+      ],
+      "exit_code": 1,
+      "error": null,
+      "passed": false,
+      "includes_gateway": false,
+      "status": "diagnostic only / not accepted",
+      "source_report": "native/mujoco/single/report.json",
+      "runtime_errors": [
+        "2026-11-12T08:15:24.261365Z ERROR node_failure: dora_daemon::spawn::prepared: node exited with error: ExitCode(1) node_id=target dataflow_id=01a1ced3-68e0-7eb2-8b67-d00019898245",
+        "16:15:24 ERROR  target: daemon exited with code 1 with stderr output:"
+      ],
+      "local_evidence": "Full original Dora log is retained under validation/downstream-msgs210-20261112/native/mujoco/single/dora.log"
+    }
+  ],
+  "remaining": "Default example references missing model.xml; rendering/runtime acceptance blocked.",
+  "acceptance": "Pending; software checks, fake/dummy backends and negative prerequisite records are scoped evidence only. Every new multi-node graph contains adapter-forge-gateway.",
+  "gitlab_sync": "Not performed; follows completed acceptance.",
+  "log_publication": "Original logs remain in the local validation workspace. This public report publishes reviewed commands, outcomes, assertions and limitations only."
+}
