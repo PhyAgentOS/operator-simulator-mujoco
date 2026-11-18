@@ -15,16 +15,15 @@
     "artifacts": [
       {
         "name": "mujoco_sim-2.0.0-py3-none-any.whl",
-        "size": 30203,
-        "sha256": "e0ecca905af76b8d9ec4c0356ff29d3e974646af14408450d35f2c69742b16b6"
+        "size": 30203
       },
       {
         "name": "mujoco_sim-2.0.0.tar.gz",
-        "size": 91623,
-        "sha256": "628c9b352750ec2d87811968f90db5229c1d4355c1be5b036d86b363fb51f03f"
+        "size": 91623
       }
     ]
   },
+  "source_profile_scope": "Local candidate worktrees; proposed maintenance changes are not deployed or merged yet. Full checksums and raw logs remain in the local workspace.",
   "source_profiles": [
     {
       "repo": "PhyAgentOS/operator-simulator-mujoco",
