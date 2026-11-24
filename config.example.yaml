@@ -1,11 +1,6 @@
 # MuJoCo 节点配置示例
 # 复制为 config.yaml 并根据实际环境修改
 #
-# 渲染后端（环境变量，须在启动前设置）：默认 egl（无显示器/服务器友好）
-#   MUJOCO_GL=egl   - 无头 GPU 渲染（推荐）
-#   MUJOCO_GL=osmesa - 软件渲染（无 GPU，需 libOSMesa）
-#   MUJOCO_GL=glfw  - 需要显示器/窗口
-#
 # 时间与频率：control_hz 为控制周期频率，需与 dataflow 中 mujoco 的 tick 间隔一致（如 50Hz → 20ms）
 
 model_path: ./model.xml  # MuJoCo XML 场景路径；可用相对路径或绝对路径。
@@ -58,6 +53,18 @@ robots:
   - id: robot_1
     joints: ["j3"]
 
+# RGB 和深度共用一个渲染器。filament（默认）支持 PBR 材质；classic 使用 MuJoCo 原生 OpenGL。
+# 无显示器 Linux 使用 classic 时，启动进程前设置 MUJOCO_GL=egl 或 MUJOCO_GL=osmesa，
+# 并安装对应的 EGL 驱动或 libOSMesa。
+renderer_backend: filament
+
+# 仅用于 renderer_backend: filament。配置 image_forward 后生效。
+# auto（默认）：Linux 选 Vulkan，macOS 选 OpenGL。已有 YAML 可省略此项。
+# vulkan：适用于无显示器的 Linux。Ubuntu 安装 libvulkan1 和显卡的 Vulkan 驱动；
+#         使用 Mesa 软件渲染时安装 mesa-vulkan-drivers。
+# opengl：macOS 可用；Linux 官方 4.0.1 wheel 使用此项时需要可用的 X 显示。
+filament_graphics_api: auto
+
 # RGB 相机输出配置：MuJoCo 模型中的 camera 名称 -> output_id 或 { output, fps }
 # 无 fps 时随 tick 输出。camera 名称需与模型 XML 中 camera 的 name 属性一致
 # image_format: raw 输出 forge_msgs.Image；jpeg/png 输出 forge_msgs.CompressedImage
@@ -84,7 +91,7 @@ image_jpeg_quality: 90   # JPEG 质量，范围 1-100；仅 image_format=jpeg �
 # 这样仿真和真机相机节点可以共享同一种 depth 契约。
 image_forward:
   # MuJoCo camera 名称 -> Dora 输出配置。
-  # output 必填；fps 省略时随 tick 输出；width/height 省略时使用默认渲染尺寸。
+  # output 必填；fps 省略时随 tick 输出。全部相机共用第一组完整的 width/height，缺省 640×480。
   camera/main: { output: "image/main", fps: 30, width: 640, height: 480 }
   camera/wrist: { output: "image/wrist", fps: 15, width: 640, height: 480 }
   camera/top:

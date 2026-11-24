@@ -2,7 +2,7 @@
 
 import os
 
-from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 _spec_dir = os.path.dirname(os.path.abspath(SPEC))
 _root_dir = os.path.dirname(_spec_dir)
@@ -18,6 +18,7 @@ hiddenimports = (
     + [
         "dora",
         "mujoco",
+        "mujoco.studio._studio",
         "numpy",
         "pyarrow",
         "yaml",
@@ -31,7 +32,7 @@ a = Analysis(
     [os.path.join(_src_dir, "mujoco_sim", "__main__.py")],
     pathex=[_src_dir],
     binaries=mujoco_binaries,
-    datas=[],
+    datas=collect_data_files("mujoco.studio", includes=["assets/*.filamat", "assets/*.ktx"]),
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},

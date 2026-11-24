@@ -4,15 +4,7 @@
 from __future__ import annotations
 
 import argparse
-import os
-import platform
 import sys
-
-# 渲染后端：须在 import mujoco 之前设置。
-# Linux 默认 egl 便于无显示器/SSH/服务器；Windows 不支持 egl，默认 glfw。
-# 纯软件渲染可手动设 MUJOCO_GL=osmesa（需 libOSMesa）。
-if "MUJOCO_GL" not in os.environ:
-    os.environ["MUJOCO_GL"] = "glfw" if platform.system() == "Windows" else "egl"
 
 from . import __version__
 from .config import load_config

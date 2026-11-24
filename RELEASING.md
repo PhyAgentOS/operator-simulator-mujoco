@@ -34,10 +34,10 @@ The wheel and source distribution are packaging checks only; this project does n
 
 ## Linux x86_64 binary
 
-Build on the Ubuntu 24.04 release host. The published binary uses glibc 2.39 as its deployment baseline:
+Build the Forge 2.x Ubuntu 20.04 artifact inside the focal release container:
 
 ```bash
-sudo apt install libegl1 libgl1 libosmesa6 libglfw3
+sudo apt install libegl1 libgl1 libosmesa6 libglfw3 libvulkan1 mesa-vulkan-drivers
 rm -rf dist build/pyinstaller
 bash scripts/build_pyinstaller.sh
 ```
@@ -53,7 +53,7 @@ file dist/mujoco_sim
 ldd dist/mujoco_sim
 ```
 
-The binary requires compatible glibc and one usable EGL, OSMesa, or GLFW/OpenGL backend. PyInstaller one-file extraction also requires a temporary directory that permits file creation, writing, and execution.
+The binary requires a compatible glibc. Filament camera outputs use Vulkan by default on Linux. Classic camera outputs can use EGL or OSMesa. PyInstaller one-file extraction also requires a temporary directory that permits file creation, writing, and execution.
 
 ## Normalized archive and SHA-256
 
@@ -79,7 +79,7 @@ Before creating the tag:
 1. Confirm CI passes for the reviewed release commit on `master`.
 2. Confirm the working tree is clean and the binary was built from that commit.
 3. Confirm the archive contains only `mujoco_sim` with normalized metadata.
-4. Confirm the binary was tested on the glibc 2.39 deployment baseline with the intended rendering backend.
+4. Confirm the binary was tested on the target release container with the intended rendering backend.
 5. Create and push the annotated `v1.1.1` tag to GitLab and GitHub.
 6. Create the GitHub Release and upload only the `.tar.gz` archive and `.sha256` file. Include the checksum and compatibility baseline in the release notes.
 

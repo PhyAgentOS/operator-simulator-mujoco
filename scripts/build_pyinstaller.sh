@@ -38,6 +38,20 @@ if [[ ! -f "${DIST_FILE}" ]]; then
   exit 1
 fi
 
+# --version never loads a camera. Check the native bridge and the Filament
+# materials separately so an incomplete one-file archive fails the build.
+"${VENV_DIR}/bin/python" - "${DIST_FILE}" <<'PYTHON'
+import sys
+from PyInstaller.archive.readers import CArchiveReader
+
+entries = CArchiveReader(sys.argv[1]).toc
+for asset in ("pbr.filamat", "unlit_depth.filamat", "ibl.ktx"):
+    if "mujoco/studio/assets/" + asset not in entries:
+        raise SystemExit(f"Missing Filament asset in executable: {asset}")
+if not any(name.startswith("mujoco/studio/_studio.") for name in entries):
+    raise SystemExit("Missing MuJoCo Studio native extension in executable")
+PYTHON
+
 EXPECTED_VERSION="$("${VENV_DIR}/bin/python" -c 'import importlib.metadata; print("mujoco-sim " + importlib.metadata.version("mujoco-sim"))')"
 ACTUAL_VERSION="$("${DIST_FILE}" --version)"
 if [[ "${ACTUAL_VERSION}" != "${EXPECTED_VERSION}" ]]; then

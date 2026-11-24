@@ -11,9 +11,22 @@ from forge_msgs import CompressedImage, Image
 from .config import CameraConfig, MuJoCoNodeConfig
 
 
-def _create_renderer(model: mujoco.MjModel, height: int = 480, width: int = 640):
-    """Create a MuJoCo offscreen renderer."""
-    return mujoco.Renderer(model, height, width)
+class ClassicRenderer:
+    """Adapt native MuJoCo RGB and metric depth to the shared camera pipeline."""
+
+    def __init__(self, model: mujoco.MjModel, height: int, width: int):
+        self.renderer = mujoco.Renderer(model, height=height, width=width)
+
+    def render(self, data: mujoco.MjData, camera: str, *, depth: bool = False):
+        if depth:
+            self.renderer.enable_depth_rendering()
+        else:
+            self.renderer.disable_depth_rendering()
+        self.renderer.update_scene(data, camera=camera)
+        return self.renderer.render()
+
+    def close(self):
+        self.renderer.close()
 
 
 def create_renderer_for_config(
@@ -27,7 +40,12 @@ def create_renderer_for_config(
             render_width = int(cam_config.width)
             render_height = int(cam_config.height)
             break
-    return _create_renderer(model, height=render_height, width=render_width)
+    if config.renderer_backend == "classic":
+        return ClassicRenderer(model, render_height, render_width)
+
+    from .filament import FilamentRenderer
+
+    return FilamentRenderer(model, render_height, render_width, config.filament_graphics_api)
 
 
 def load_cv2_module(config: MuJoCoNodeConfig):
@@ -91,18 +109,14 @@ def render_color_payload(
     config: MuJoCoNodeConfig,
     cv2_module: Any | None,
 ):
-    """Render RGB, explicitly disabling any previous depth rendering mode."""
-    renderer.disable_depth_rendering()
-    renderer.update_scene(data, camera=camera)
-    pixels = renderer.render()
+    """Render an RGB camera frame."""
+    pixels = renderer.render(data, camera)
     return _build_image_payload(pixels, config, cv2_module)
 
 
 def render_depth_payload(renderer, data: mujoco.MjData, camera: str):
     """Render depth in meters."""
-    renderer.enable_depth_rendering()
-    renderer.update_scene(data, camera=camera)
-    depth_m = renderer.render()
+    depth_m = renderer.render(data, camera, depth=True)
     return _build_depth_payload(depth_m)
 
 

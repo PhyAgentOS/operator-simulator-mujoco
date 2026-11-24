@@ -56,7 +56,9 @@ jobs:
           libegl1 \
           libgl1 \
           libglfw3 \
-          libosmesa6
+          libosmesa6 \
+          libvulkan1 \
+          mesa-vulkan-drivers
         rm -rf /var/lib/apt/lists/*
     - uses: actions/checkout@v6
       with:

@@ -8,6 +8,12 @@ The project follows Semantic Versioning. Dates use the `YYYY-MM-DD` format.
 
 No unreleased changes.
 
+## 2.0.2 - 2026-11-24
+
+- Choose Filament (default) or classic rendering for RGB and optical-axis depth with `renderer_backend`. Camera topics and float32 depth units in metres are preserved.
+- Configure the graphics API with `filament_graphics_api` (`auto`, `vulkan`, or `opengl`). Headless Linux uses Vulkan by default.
+- Bundle the Filament native extension, shaders and environment lighting in the Ubuntu 20.04 x86_64 executable.
+
 ## 2.0.1 - 2026-11-24
 
 - Upgrade the Forge 2.x simulator to MuJoCo 4.0.1 and use the classic renderer’s native cleanup.
