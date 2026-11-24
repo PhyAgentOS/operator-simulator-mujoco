@@ -22,7 +22,7 @@ dependencies = [
     "dora-rs>=1.0.1,<2",
     "forge-common>=2.1.0,<3",
     "forge-msgs>=2.1.0,<3",
-    "mujoco==3.3.7",
+    "mujoco-core[rendering]==4.0.1",
     "numpy>=2.0.0",
     "opencv-python",
     "pyyaml>=6.0",

@@ -24,6 +24,8 @@ Forge Common/Msgs and Dora move to the 2.x/1.x lines. Renderers close when later
 
 ## Runtime and platform
 
+Forge 2.x uses MuJoCo 4.0.1 with the classic OpenGL renderer. On headless Linux select EGL or OSMesa with `MUJOCO_GL` and install its system driver.
+
 - First validation combination: Dora CLI/coordinator/daemon/node APIs 1.0.1,
   Forge Msgs 2.1.0 and Common 2.1.0; use only the families required by this node.
 - Forge wire schemas remain `forge_msgs.v1`. Dora 0.x and 1.x cannot share a runtime.

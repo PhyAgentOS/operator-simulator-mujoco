@@ -11,29 +11,6 @@ from forge_msgs import CompressedImage, Image
 from .config import CameraConfig, MuJoCoNodeConfig
 
 
-def _patch_mujoco_renderer_close() -> None:
-    """Avoid close errors when Renderer initialization fails before context setup."""
-
-    def _safe_close(self) -> None:
-        try:
-            if getattr(self, "_gl_context", None):
-                self._gl_context.free()
-            if getattr(self, "_mjr_context", None):
-                self._mjr_context.free()
-        except Exception:
-            pass
-        try:
-            object.__setattr__(self, "_gl_context", None)
-            object.__setattr__(self, "_mjr_context", None)
-        except Exception:
-            pass
-
-    mujoco.Renderer.close = _safe_close
-
-
-_patch_mujoco_renderer_close()
-
-
 def _create_renderer(model: mujoco.MjModel, height: int = 480, width: int = 640):
     """Create a MuJoCo offscreen renderer."""
     return mujoco.Renderer(model, height, width)
