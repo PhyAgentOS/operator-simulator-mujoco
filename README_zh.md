@@ -20,6 +20,8 @@
 
 ## 安装与开发
 
+Forge 2.x 使用 MuJoCo 4.0.1 和经典 OpenGL 渲染器。无显示器的 Linux 环境可通过 `MUJOCO_GL` 选择 EGL 或 OSMesa，并安装对应的系统驱动。
+
 需要 Python 3.12 和 [uv](https://docs.astral.sh/uv/)：
 
 ```bash

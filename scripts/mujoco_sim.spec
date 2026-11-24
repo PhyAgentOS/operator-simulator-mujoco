@@ -22,6 +22,7 @@ hiddenimports = (
         "pyarrow",
         "yaml",
         "OpenGL.platform.egl",
+        "OpenGL.platform.osmesa",
         "OpenGL.EGL",
     ]
 )
