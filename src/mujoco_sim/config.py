@@ -160,6 +160,8 @@ class MuJoCoNodeConfig:
     # 可选：通过 mocap body 消费 LocomotionCommand，按机体系速度做平面运动。
     kinematic_planar_base: KinematicPlanarBaseConfig | None = None
 
+    filament_graphics_api: Literal["auto", "vulkan", "opengl"] = "auto"
+
     @property
     def control_period_sec(self) -> float:
         """控制周期（秒），由 control_hz 推导。"""
@@ -340,6 +342,10 @@ class MuJoCoNodeConfig:
         if image_jpeg_quality < 1 or image_jpeg_quality > 100:
             raise ValueError("image_jpeg_quality 必须在 [1, 100] 范围内")
 
+        graphics_api = data.get("filament_graphics_api", "auto")
+        if graphics_api not in ("auto", "vulkan", "opengl"):
+            raise ValueError("filament_graphics_api 必须是 auto、vulkan 或 opengl")
+
         control_hz = float(data.get("control_hz", 50.0))
         if control_hz <= 0:
             raise ValueError("control_hz 必须大于 0")
@@ -397,6 +403,7 @@ class MuJoCoNodeConfig:
             image_format=image_format,
             image_jpeg_quality=image_jpeg_quality,
             control_hz=control_hz,
+            filament_graphics_api=graphics_api,
             pose_targets=pose_targets,
             kinematic_planar_base=kinematic_planar_base,
         )

@@ -347,3 +347,13 @@ def test_dora_error_is_a_failed_simulation(tmp_path, monkeypatch):
     )
     runtime = runtime_module.MuJoCoNodeRuntime(_config(_write_model(tmp_path)))
     assert runtime.run() == 1
+
+
+def test_filament_graphics_api_defaults_to_auto():
+    config = MuJoCoNodeConfig.from_dict({"model_path": "scene.xml"})
+    assert config.filament_graphics_api == "auto"
+
+
+def test_filament_graphics_api_rejects_unknown_driver():
+    with pytest.raises(ValueError, match="filament_graphics_api"):
+        MuJoCoNodeConfig.from_dict({"model_path": "scene.xml", "filament_graphics_api": "egl"})

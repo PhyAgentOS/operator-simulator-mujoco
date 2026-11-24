@@ -8,14 +8,19 @@ import numpy as np
 
 
 class FilamentRenderer:
-    def __init__(self, model: mujoco.MjModel, height: int, width: int):
+    def __init__(self, model: mujoco.MjModel, height: int, width: int, graphics_api: str):
         self.model = model
         # mjv_updateCamera needs only the stereo camera pair, no drawable geoms.
         self.camera_scene = mujoco.MjvScene(model, maxgeom=1)
         self.fixed = mujoco.MjvCamera()
         self.fixed.type = mujoco.mjtCamera.mjCAMERA_FIXED
 
-        ctx = mjrf.Context(mjrf.ContextConfig())
+        api = {
+            "auto": mjrf.GraphicsApi.GRAPHICS_API_DEFAULT,
+            "vulkan": mjrf.GraphicsApi.GRAPHICS_API_VULKAN,
+            "opengl": mjrf.GraphicsApi.GRAPHICS_API_OPENGL,
+        }[graphics_api]
+        ctx = mjrf.Context(mjrf.ContextConfig(graphics_api=api))
         self.renderer = Renderer(ctx)
         scene = self.renderer.scene("model")
         self.model_scene = ModelScene(ctx, model, scene)

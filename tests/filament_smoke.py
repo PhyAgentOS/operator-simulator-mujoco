@@ -1,9 +1,12 @@
 """Run with a working offscreen graphics driver, including in headless CI."""
 
+import sys
+
 import mujoco
 import numpy as np
 
-from mujoco_sim.rendering import _create_renderer
+from mujoco_sim.config import MuJoCoNodeConfig
+from mujoco_sim.rendering import create_renderer_for_config
 
 
 def main():
@@ -17,7 +20,12 @@ def main():
         </body>
       </worldbody></mujoco>""")
     data = mujoco.MjData(model)
-    renderer = _create_renderer(model, height=80, width=100)
+    config = MuJoCoNodeConfig.from_dict({
+        "model_path": "in-memory.xml",
+        "filament_graphics_api": "opengl" if sys.platform == "darwin" else "vulkan",
+        "image_forward": {"eye": {"output": "rgb", "height": 80, "width": 100}},
+    })
+    renderer = create_renderer_for_config(model, config)
     try:
         for z in (0, .45):
             data.qpos[0] = z

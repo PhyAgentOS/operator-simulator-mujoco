@@ -11,13 +11,6 @@ from forge_msgs import CompressedImage, Image
 from .config import CameraConfig, MuJoCoNodeConfig
 
 
-def _create_renderer(model: mujoco.MjModel, height: int = 480, width: int = 640):
-    """Create a MuJoCo offscreen renderer."""
-    from .filament import FilamentRenderer
-
-    return FilamentRenderer(model, height, width)
-
-
 def create_renderer_for_config(
     model: mujoco.MjModel,
     config: MuJoCoNodeConfig,
@@ -29,7 +22,9 @@ def create_renderer_for_config(
             render_width = int(cam_config.width)
             render_height = int(cam_config.height)
             break
-    return _create_renderer(model, height=render_height, width=render_width)
+    from .filament import FilamentRenderer
+
+    return FilamentRenderer(model, render_height, render_width, config.filament_graphics_api)
 
 
 def load_cv2_module(config: MuJoCoNodeConfig):

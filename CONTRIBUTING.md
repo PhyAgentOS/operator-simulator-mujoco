@@ -11,10 +11,10 @@ uv lock --check
 uv sync --frozen --all-groups --python 3.12
 ```
 
-Camera rendering requires one of EGL, OSMesa, or GLFW and the corresponding system OpenGL libraries. On Ubuntu 24.04:
+Headless Linux camera tests use Filament with Vulkan. Install the runtime libraries and a Vulkan driver. For Mesa software rendering on Ubuntu:
 
 ```bash
-sudo apt install libegl1 libgl1 libosmesa6 libglfw3
+sudo apt install libegl1 libgl1 libosmesa6 libglfw3 libvulkan1 mesa-vulkan-drivers
 ```
 
 ## Required checks
