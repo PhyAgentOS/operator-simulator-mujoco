@@ -20,7 +20,7 @@
 
 ## 安装与开发
 
-Forge 2.x 使用 MuJoCo 4.0.1 和经典 OpenGL 渲染器。无显示器的 Linux 环境可通过 `MUJOCO_GL` 选择 EGL 或 OSMesa，并安装对应的系统驱动。
+Forge 2.x 节点用 MuJoCo Filament 渲染相机流，依赖同版本的 `mujoco-core` 和 `mujoco-studio` 4.0.1。无显示器的 Linux 环境使用 Vulkan，Ubuntu 需安装 `libvulkan1` 和显卡对应的 Vulkan 驱动；软件渲染可安装 `mesa-vulkan-drivers`。macOS 使用 OpenGL。已有 `image_forward` 配置继续输出 RGB 或沿相机光轴的米制 float32 深度（`32FC1`）。运行 `uv run --frozen python tests/filament_smoke.py` 可验证像素对齐和深度读数。
 
 需要 Python 3.12 和 [uv](https://docs.astral.sh/uv/)：
 
@@ -211,7 +211,7 @@ uv run dora run dataflow.yaml
 
 构建产物固定为 `dist/mujoco_sim`。Forge 部署可以将该 artifact 安装到 `${FORGE_RUNTIME_BIN}/mujoco_sim`，从而保持现有 dataflow 的二进制路径约定。
 
-公开 Release 仅额外发布包含 `mujoco_sim` 的 Linux x86_64 归档及 SHA-256 文件；具体流程见 [`RELEASING.md`](RELEASING.md)。当前二进制以 Ubuntu 24.04 构建环境为基线，需要兼容 glibc 2.39 的 Linux 系统及可用的 EGL、OSMesa 或 GLFW/OpenGL 运行库。
+公开 Release 仅额外发布包含 `mujoco_sim` 的 Linux x86_64 归档及 SHA-256 文件；具体流程见 [`RELEASING.md`](RELEASING.md)。Ubuntu 20.04 二进制工作流在 focal 容器内构建。运行相机输出需要可用的 Vulkan 驱动。
 
 ## License
 

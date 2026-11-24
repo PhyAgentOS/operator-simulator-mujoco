@@ -24,7 +24,7 @@ Forge Common/Msgs and Dora move to the 2.x/1.x lines. Renderers close when later
 
 ## Runtime and platform
 
-Forge 2.x uses MuJoCo 4.0.1 with the classic OpenGL renderer. On headless Linux select EGL or OSMesa with `MUJOCO_GL` and install its system driver.
+The Forge 2.x node renders camera streams with MuJoCo Filament (`mujoco-core` and `mujoco-studio` 4.0.1). Headless Linux uses Vulkan and requires a Vulkan loader and a working driver. On Ubuntu, install `libvulkan1` and the GPU vendor driver, or `mesa-vulkan-drivers` for Mesa software rendering. macOS uses OpenGL. Existing `image_forward` configurations emit RGB or optical-axis depth in float32 metres (`32FC1`).
 
 - First validation combination: Dora CLI/coordinator/daemon/node APIs 1.0.1,
   Forge Msgs 2.1.0 and Common 2.1.0; use only the families required by this node.
@@ -65,8 +65,7 @@ bash scripts/build_pyinstaller.sh
 ```
 
 Use the committed `uv.lock` and frozen/locked installs. Python vendor SDK tests require
-the supported SDK platform. For Linux headless MuJoCo rendering, install the required
-EGL or OSMesa libraries and select the appropriate `MUJOCO_GL` backend.
+the supported SDK platform. Run `uv run --frozen python tests/filament_smoke.py` to verify RGB alignment and metric depth using the installed graphics driver.
 
 Validate every delivered example or rendered template with:
 

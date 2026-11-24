@@ -13,7 +13,9 @@ from .config import CameraConfig, MuJoCoNodeConfig
 
 def _create_renderer(model: mujoco.MjModel, height: int = 480, width: int = 640):
     """Create a MuJoCo offscreen renderer."""
-    return mujoco.Renderer(model, height, width)
+    from .filament import FilamentRenderer
+
+    return FilamentRenderer(model, height, width)
 
 
 def create_renderer_for_config(
@@ -91,18 +93,14 @@ def render_color_payload(
     config: MuJoCoNodeConfig,
     cv2_module: Any | None,
 ):
-    """Render RGB, explicitly disabling any previous depth rendering mode."""
-    renderer.disable_depth_rendering()
-    renderer.update_scene(data, camera=camera)
-    pixels = renderer.render()
+    """Render an RGB camera frame."""
+    pixels = renderer.render(data, camera)
     return _build_image_payload(pixels, config, cv2_module)
 
 
 def render_depth_payload(renderer, data: mujoco.MjData, camera: str):
     """Render depth in meters."""
-    renderer.enable_depth_rendering()
-    renderer.update_scene(data, camera=camera)
-    depth_m = renderer.render()
+    depth_m = renderer.render(data, camera, depth=True)
     return _build_depth_payload(depth_m)
 
 
