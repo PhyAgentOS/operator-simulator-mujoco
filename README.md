@@ -16,7 +16,7 @@ A standalone Forge simulator with joint/locomotion commands, state/pose outputs 
 
 ## Migration status
 
-Target node version: **2.0.0**. These changes are candidates pending the platform,
+Target node version: **2.0.1**. These changes are candidates pending the platform,
 hardware and sustained-stream acceptance gates below. A version declaration does not
 mean a stable release has been accepted.
 

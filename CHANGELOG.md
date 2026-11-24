@@ -8,6 +8,11 @@ The project follows Semantic Versioning. Dates use the `YYYY-MM-DD` format.
 
 No unreleased changes.
 
+## 2.0.1 - 2026-11-24
+
+- Upgrade the Forge 2.x simulator to MuJoCo 4.0.1 and use the classic renderer’s native cleanup.
+- Include the OSMesa platform module in the Ubuntu 20.04 executable for headless RGB and depth rendering.
+
 ## 1.1.1 - 2026-08-18
 
 ### Added
