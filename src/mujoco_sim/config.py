@@ -160,6 +160,7 @@ class MuJoCoNodeConfig:
     # 可选：通过 mocap body 消费 LocomotionCommand，按机体系速度做平面运动。
     kinematic_planar_base: KinematicPlanarBaseConfig | None = None
 
+    renderer_backend: Literal["filament", "classic"] = "filament"
     filament_graphics_api: Literal["auto", "vulkan", "opengl"] = "auto"
 
     @property
@@ -342,6 +343,10 @@ class MuJoCoNodeConfig:
         if image_jpeg_quality < 1 or image_jpeg_quality > 100:
             raise ValueError("image_jpeg_quality 必须在 [1, 100] 范围内")
 
+        renderer_backend = data.get("renderer_backend", "filament")
+        if renderer_backend not in ("filament", "classic"):
+            raise ValueError("renderer_backend 必须是 filament 或 classic")
+
         graphics_api = data.get("filament_graphics_api", "auto")
         if graphics_api not in ("auto", "vulkan", "opengl"):
             raise ValueError("filament_graphics_api 必须是 auto、vulkan 或 opengl")
@@ -403,6 +408,7 @@ class MuJoCoNodeConfig:
             image_format=image_format,
             image_jpeg_quality=image_jpeg_quality,
             control_hz=control_hz,
+            renderer_backend=renderer_backend,
             filament_graphics_api=graphics_api,
             pose_targets=pose_targets,
             kinematic_planar_base=kinematic_planar_base,

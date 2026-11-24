@@ -9,7 +9,7 @@ from mujoco_sim.config import MuJoCoNodeConfig
 from mujoco_sim.rendering import create_renderer_for_config
 
 
-def main():
+def check_backend(backend):
     model = mujoco.MjModel.from_xml_string("""
     <mujoco><statistic extent="1"/><visual><map znear=".1" zfar="10"/></visual>
       <worldbody>
@@ -21,6 +21,7 @@ def main():
       </worldbody></mujoco>""")
     data = mujoco.MjData(model)
     config = MuJoCoNodeConfig.from_dict({
+        "renderer_backend": backend,
         "model_path": "in-memory.xml",
         "filament_graphics_api": "opengl" if sys.platform == "darwin" else "vulkan",
         "image_forward": {"eye": {"output": "rgb", "height": 80, "width": 100}},
@@ -49,4 +50,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    for backend in ("classic", "filament"):
+        check_backend(backend)

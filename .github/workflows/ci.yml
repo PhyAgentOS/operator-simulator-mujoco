@@ -45,8 +45,10 @@ jobs:
           MUJOCO_GL: osmesa
         run: uv run --frozen pytest tests -q
 
-      - name: Run headless render smoke test
-        run: uv run --frozen python tests/filament_smoke.py
+      - name: Run headless classic and Filament camera smoke tests
+        env:
+          MUJOCO_GL: osmesa
+        run: uv run --frozen python tests/camera_smoke.py
 
       - name: Compile Python sources
         run: uv run --frozen python -m compileall -q src tests examples

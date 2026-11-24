@@ -24,9 +24,11 @@ Forge Common/Msgs and Dora move to the 2.x/1.x lines. Renderers close when later
 
 ## Runtime and platform
 
-The Forge 2.x node renders camera streams with MuJoCo Filament (`mujoco-core` and `mujoco-studio` 4.0.1). Headless Linux uses Vulkan and requires a Vulkan loader and a working driver. On Ubuntu, install `libvulkan1` and the GPU vendor driver, or `mesa-vulkan-drivers` for Mesa software rendering. macOS uses OpenGL. Existing `image_forward` configurations emit RGB or optical-axis depth in float32 metres (`32FC1`).
+The Forge 2.x node defaults to MuJoCo Filament (`mujoco-core` and `mujoco-studio` 4.0.1). Headless Linux uses Vulkan and requires a Vulkan loader and a working driver. On Ubuntu, install `libvulkan1` and the GPU vendor driver, or `mesa-vulkan-drivers` for Mesa software rendering. macOS uses OpenGL. Existing `image_forward` configurations emit RGB or optical-axis depth in float32 metres (`32FC1`).
 
-Set `filament_graphics_api: auto` in the node YAML to use the platform default, or set `vulkan` or `opengl` explicitly. Use `auto` or `vulkan` on headless Linux. The Linux 4.0.1 OpenGL wheel requires an X display. The setting applies to every configured RGB and depth stream.
+Select `renderer_backend: filament` (default) or `renderer_backend: classic` for all camera streams in the node YAML. For classic rendering on headless Linux, set `MUJOCO_GL=egl` or `MUJOCO_GL=osmesa` before startup and install the matching OpenGL runtime.
+
+For Filament, set `filament_graphics_api: auto` in the node YAML to use the platform default, or set `vulkan` or `opengl` explicitly. Use `auto` or `vulkan` on headless Linux. The Linux 4.0.1 OpenGL wheel requires an X display. The setting applies to every configured RGB and depth stream.
 
 - First validation combination: Dora CLI/coordinator/daemon/node APIs 1.0.1,
   Forge Msgs 2.1.0 and Common 2.1.0; use only the families required by this node.
@@ -67,7 +69,7 @@ bash scripts/build_pyinstaller.sh
 ```
 
 Use the committed `uv.lock` and frozen/locked installs. Python vendor SDK tests require
-the supported SDK platform. Run `uv run --frozen python tests/filament_smoke.py` to verify RGB alignment and metric depth using the installed graphics driver.
+the supported SDK platform. Run `uv run --frozen python tests/camera_smoke.py` to verify RGB alignment and metric depth using the installed graphics driver.
 
 Validate every delivered example or rendered template with:
 

@@ -53,7 +53,12 @@ robots:
   - id: robot_1
     joints: ["j3"]
 
-# Filament 图形 API，作用于本节点的全部 RGB / 深度相机，配置 image_forward 后生效。
+# RGB 和深度共用一个渲染器。filament（默认）支持 PBR 材质；classic 使用 MuJoCo 原生 OpenGL。
+# 无显示器 Linux 使用 classic 时，启动进程前设置 MUJOCO_GL=egl 或 MUJOCO_GL=osmesa，
+# 并安装对应的 EGL 驱动或 libOSMesa。
+renderer_backend: filament
+
+# 仅用于 renderer_backend: filament。配置 image_forward 后生效。
 # auto（默认）：Linux 选 Vulkan，macOS 选 OpenGL。已有 YAML 可省略此项。
 # vulkan：适用于无显示器的 Linux。Ubuntu 安装 libvulkan1 和显卡的 Vulkan 驱动；
 #         使用 Mesa 软件渲染时安装 mesa-vulkan-drivers。

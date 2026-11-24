@@ -11,6 +11,24 @@ from forge_msgs import CompressedImage, Image
 from .config import CameraConfig, MuJoCoNodeConfig
 
 
+class ClassicRenderer:
+    """Adapt native MuJoCo RGB and metric depth to the shared camera pipeline."""
+
+    def __init__(self, model: mujoco.MjModel, height: int, width: int):
+        self.renderer = mujoco.Renderer(model, height=height, width=width)
+
+    def render(self, data: mujoco.MjData, camera: str, *, depth: bool = False):
+        if depth:
+            self.renderer.enable_depth_rendering()
+        else:
+            self.renderer.disable_depth_rendering()
+        self.renderer.update_scene(data, camera=camera)
+        return self.renderer.render()
+
+    def close(self):
+        self.renderer.close()
+
+
 def create_renderer_for_config(
     model: mujoco.MjModel,
     config: MuJoCoNodeConfig,
@@ -22,6 +40,9 @@ def create_renderer_for_config(
             render_width = int(cam_config.width)
             render_height = int(cam_config.height)
             break
+    if config.renderer_backend == "classic":
+        return ClassicRenderer(model, render_height, render_width)
+
     from .filament import FilamentRenderer
 
     return FilamentRenderer(model, render_height, render_width, config.filament_graphics_api)

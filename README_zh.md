@@ -20,9 +20,11 @@
 
 ## 安装与开发
 
-Forge 2.x 节点用 MuJoCo Filament 渲染相机流，依赖同版本的 `mujoco-core` 和 `mujoco-studio` 4.0.1。无显示器的 Linux 环境使用 Vulkan，Ubuntu 需安装 `libvulkan1` 和显卡对应的 Vulkan 驱动；软件渲染可安装 `mesa-vulkan-drivers`。macOS 使用 OpenGL。已有 `image_forward` 配置继续输出 RGB 或沿相机光轴的米制 float32 深度（`32FC1`）。运行 `uv run --frozen python tests/filament_smoke.py` 可验证像素对齐和深度读数。
+Forge 2.x 节点默认用 MuJoCo Filament 渲染相机流，依赖同版本的 `mujoco-core` 和 `mujoco-studio` 4.0.1。无显示器的 Linux 环境使用 Vulkan，Ubuntu 需安装 `libvulkan1` 和显卡对应的 Vulkan 驱动；软件渲染可安装 `mesa-vulkan-drivers`。macOS 使用 OpenGL。已有 `image_forward` 配置继续输出 RGB 或沿相机光轴的米制 float32 深度（`32FC1`）。运行 `uv run --frozen python tests/camera_smoke.py` 可验证像素对齐和深度读数。
 
-节点 YAML 的 `filament_graphics_api` 可取 `auto`（默认）、`vulkan` 或 `opengl`，统一作用于已配置的 RGB 和深度流。无显示器的 Linux 可用 `auto` 或 `vulkan`。Linux 官方 4.0.1 wheel 显式选择 OpenGL 时需要可用的 X 显示。
+在节点 YAML 中设置 `renderer_backend: filament`（默认）或 `renderer_backend: classic`，统一选择 RGB 和深度渲染器。无显示器 Linux 使用 classic 时，启动前设置 `MUJOCO_GL=egl` 或 `MUJOCO_GL=osmesa` 并安装对应运行库。
+
+使用 Filament 时，`filament_graphics_api` 可取 `auto`（默认）、`vulkan` 或 `opengl`，统一作用于已配置的 RGB 和深度流。无显示器的 Linux 可用 `auto` 或 `vulkan`。Linux 官方 4.0.1 wheel 显式选择 OpenGL 时需要可用的 X 显示。
 
 需要 Python 3.12 和 [uv](https://docs.astral.sh/uv/)：
 

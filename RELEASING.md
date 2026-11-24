@@ -53,7 +53,7 @@ file dist/mujoco_sim
 ldd dist/mujoco_sim
 ```
 
-The binary requires a compatible glibc. Camera outputs require a working Vulkan driver. PyInstaller one-file extraction also requires a temporary directory that permits file creation, writing, and execution.
+The binary requires a compatible glibc. Filament camera outputs use Vulkan by default on Linux. Classic camera outputs can use EGL or OSMesa. PyInstaller one-file extraction also requires a temporary directory that permits file creation, writing, and execution.
 
 ## Normalized archive and SHA-256
 
