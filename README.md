@@ -16,7 +16,7 @@ A standalone Forge simulator with joint/locomotion commands, state/pose outputs 
 
 ## Migration status
 
-Target node version: **2.0.2**. These changes are candidates pending the platform,
+Target node version: **2.1.0**. These changes are candidates pending the platform,
 hardware and sustained-stream acceptance gates below. A version declaration does not
 mean a stable release has been accepted.
 
@@ -127,3 +127,15 @@ The workflow verifies tag type, source commit, branch ancestry, source version a
 Set `build_binaries=true` to call the existing Ubuntu 20.04 binary workflow; its existing architecture, CLI and archive checks remain in force. You can also run `build-ubuntu20.yml` directly with `ref`, `version` and `release_line`; `ref` must be an annotated tag, not a moving branch. Binary artifacts are attached only after all selected jobs succeed.
 
 The source archive preserves the tagged tree; external SDKs/submodules, model downloads and site configuration remain separate prerequisites. A dependency or SDK build failure is not successful release acceptance. Build success does not establish single-node or Gateway-chain `dora run`, hardware, real-model, sustained-run or rollback acceptance. Every acceptance chain must include `adapter-forge-gateway` from the same compatibility line. Forge 2.x is a **breaking change**: align Forge libraries, node versions and Dora across the entire deployment; keep 1.x on its maintenance branch.
+
+## Optional navigation simulation
+
+Version 2.1.0 adds opt-in navigation support; profiles without these settings keep their existing behavior.
+
+- `joint_planar_base` names the body and x/y slide plus yaw hinge joints. Velocity commands apply generalized forces through MuJoCo dynamics, so obstacles produce physical contacts. It is mutually exclusive with the existing mocap `kinematic_planar_base`. Commands expire on simulation time and a wall-clock watchdog. `base_feedback` reports measured velocities and inferred differential wheel speeds.
+- `navigation_sensors` names a LiDAR site, IMU site and native gyro/accelerometer sensors. The packaged Mid360 scan pattern is raycast incrementally at physics steps. `point_cloud` is a Forge `PointCloudBuffer` with x/y/z in metres, per-point `time_offset_ns`, synthetic reflectivity and sensor-index line/tag fields. It does not model hardware reflectivity or firing electronics. `imu` is Forge `Imu` (rad/s and m/s²).
+- Sensor metadata includes `capture_timestamp_ns`, `frame_id`, `clock_domain=simulation`, `time_mapping_id` and `ros_time_offset_ns=0`. `clock` is an Arrow int64 nanosecond simulation timestamp, emitted before the period's sensor payloads. A scene reset changes `time_mapping_id`; restart dependent localization/navigation sessions rather than mixing time epochs.
+- Geometry groups 4 (visual decals) and 5 (collision proxies) are excluded from LiDAR rays. Physical scene geometry must remain in groups 0–3. An optional auxiliary LiDAR must be rigidly mounted; its returns are transformed into the primary sensor frame using asset extrinsics.
+- `state_recording_file` enables an exclusive-create JSONL file containing actual qpos/qvel, mocap state, simulation time and monotonic capture time. A bounded writer drops display frames rather than blocking physics. This stream and optional contact evaluation are for display/acceptance only, never navigation truth feedback.
+
+The MIT-licensed CPU ray support and scan pattern are vendored privately from MuJoCo-LiDAR. See `src/mujoco_sim/_vendor/lidar/SOURCE.json` and `LICENSE` for the pinned source, local compatibility change and checksums. No legacy MuJoCo 3 package is installed. Run `pytest tests/test_navigation_simulation.py tests/test_contact_evaluation.py` for contact, watchdog, timestamp and sensor checks. These tests do not certify an external navigation stack or physical robot.

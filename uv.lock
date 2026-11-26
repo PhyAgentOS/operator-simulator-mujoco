@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 
 [[package]]
@@ -156,7 +156,7 @@ rendering = [
 
 [[package]]
 name = "mujoco-sim"
-version = "2.0.2"
+version = "2.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "dora-rs" },
@@ -179,7 +179,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "dora-rs", specifier = ">=1.0.1,<2" },
+    { name = "dora-rs", specifier = "==1.0.1" },
     { name = "forge-common", specifier = ">=2.1.0,<3" },
     { name = "forge-msgs", specifier = ">=2.1.0,<3" },
     { name = "mujoco-core", extras = ["rendering"], specifier = "==4.0.1" },

@@ -32,7 +32,10 @@ a = Analysis(
     [os.path.join(_src_dir, "mujoco_sim", "__main__.py")],
     pathex=[_src_dir],
     binaries=mujoco_binaries,
-    datas=collect_data_files("mujoco.studio", includes=["assets/*.filamat", "assets/*.ktx"]),
+    datas=(collect_data_files("mujoco.studio", includes=["assets/*.filamat", "assets/*.ktx"])
+           + collect_data_files("mujoco_sim", includes=["_vendor/lidar/scan_mode/*.npy",
+                                                       "_vendor/lidar/LICENSE",
+                                                       "_vendor/lidar/SOURCE.json"])),
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},

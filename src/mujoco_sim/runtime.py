@@ -5,15 +5,20 @@ from __future__ import annotations
 import json
 import math
 import sys
+import time
 from typing import Any
 
 import mujoco
+import pyarrow as pa
 from dora import Node
 from forge_common import get_logger
 from forge_msgs import JointCommand, JointState, LocomotionCommand, Pose, PoseSet
 
 from . import rendering, scene
 from .config import MuJoCoNodeConfig
+from .joint_base import JointPlanarBase
+from .contact_evaluation import ContactEvaluation
+from .state_recording import StateRecording
 from .handlers import (
     build_joint_state,
     build_robot_command,
@@ -62,6 +67,12 @@ class MuJoCoNodeRuntime:
             self.planar_base,
         )
         self.pose_body_ids = scene.resolve_pose_body_ids(self.model, self.config)
+        self.contact_evaluation = (ContactEvaluation(self.model, self.data, self.planar_base.body_id)
+                                   if isinstance(self.planar_base, JointPlanarBase) else None)
+        self.navigation_sensors = None
+        if self.config.navigation_sensors is not None:
+            from .navigation_sensors import NavigationSensors
+            self.navigation_sensors = NavigationSensors(self.model, self.data, self.config.navigation_sensors)
 
         self.renderer = None
         if self.config.camera_outputs:
@@ -99,6 +110,7 @@ class MuJoCoNodeRuntime:
         self.sim_time = 0.0
         self.current_step = 0
         self.episode_index = 0
+        self.state_recording = StateRecording(config.state_recording_file)
 
     def run(self) -> int:
         """Process Dora events until STOP or ERROR."""
@@ -119,6 +131,7 @@ class MuJoCoNodeRuntime:
                         pass
             return 0
         finally:
+            self.state_recording.close()
             self._close_renderer()
 
     def _close_renderer(self) -> None:
@@ -167,6 +180,10 @@ class MuJoCoNodeRuntime:
         self.current_step = 0
         self.episode_index += 1
         self.next_camera_time = rendering.initial_camera_times(self.config)
+        if self.navigation_sensors is not None:
+            self.navigation_sensors.reset()
+        if self.contact_evaluation is not None:
+            self.contact_evaluation.reset()
         self._send_status()
         self.sim_mode = "RUNNING"
 
@@ -176,21 +193,40 @@ class MuJoCoNodeRuntime:
             return
 
         self._step_physics()
+        self.state_recording.capture(self.data, self.episode_index)
         self._send_state_output()
         self._send_pose_output()
         self._send_camera_outputs()
+        if isinstance(self.planar_base, JointPlanarBase):
+            self.node.send_output("base_feedback", pa.array([json.dumps(self.planar_base.feedback(), allow_nan=False)]))
         self._send_status()
 
     def _step_physics(self) -> None:
         n_steps = max(1, round(self.control_period_sec / self.physics_dt))
+        sensor_outputs = []
         for _ in range(n_steps):
             if self.planar_base is not None:
                 self.planar_base.advance(self.physics_dt, self.sim_time)
             mujoco.mj_step(self.model, self.data)
-            self.sim_time += self.physics_dt
+            self.sim_time = float(self.data.time)
+            if self.navigation_sensors is not None or self.contact_evaluation is not None:
+                mujoco.mj_forward(self.model, self.data)
+            if self.contact_evaluation is not None:
+                self.contact_evaluation.sample()
+            if self.navigation_sensors is not None:
+                sensor_outputs.extend(self.navigation_sensors.sample())
+        if self.navigation_sensors is not None:
+            # Publish only the actual, completed control-period time. Buffering
+            # preserves every acquisition stamp while ensuring ROS receives its
+            # clock before any sensor payload stamped within this period.
+            self.node.send_output("clock", pa.array([round(self.sim_time * 1e9)], type=pa.int64()))
+            for output_id, payload, metadata in sensor_outputs:
+                self.node.send_output(output_id, payload, metadata)
         self.current_step += n_steps
 
     def _send_state_output(self) -> None:
+        if not self.config.robots:
+            return
         robot_states: dict[str, JointState] = {}
         for robot in self.config.robots:
             simulator = self.simulators[robot.id]
@@ -262,6 +298,8 @@ class MuJoCoNodeRuntime:
             "episode_index": self.episode_index,
             "sim_time": self.sim_time,
         }
+        if self.contact_evaluation is not None:
+            status["collision_evaluation"] = self.contact_evaluation.snapshot()
         self.node.send_output("sim_status", json.dumps(status).encode("utf-8"))
 
     def _handle_action(self, event: dict[str, Any]) -> None:
@@ -282,7 +320,20 @@ class MuJoCoNodeRuntime:
         except Exception as error:
             logger.error("[mujoco] 忽略无效 locomotion_command: %s", error)
             return
-        self.planar_base.set_command(command, self.sim_time)
+        if isinstance(self.planar_base, JointPlanarBase):
+            metadata = event.get("metadata", {})
+            if command.vx or command.vy or command.wz:
+                issued = metadata.get("issued_monotonic_ns", 0)
+                age = (time.monotonic_ns() - issued) / 1e9 if isinstance(issued, int) else math.inf
+                if metadata.get("navigation_authorized") is not True or not 0 <= age < self.config.joint_planar_base.command_timeout_sec:
+                    self.planar_base.stop()
+                    logger.warning("[mujoco] 拒绝过期或未经授权的底盘命令")
+                    return
+        try:
+            self.planar_base.set_command(command, self.sim_time)
+        except ValueError as error:
+            self.planar_base.stop()
+            logger.warning("[mujoco] 拒绝底盘命令: %s", error)
 
     def _handle_master_state(
         self,

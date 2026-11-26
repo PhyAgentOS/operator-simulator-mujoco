@@ -10,6 +10,8 @@ from typing import Any, Literal
 
 import yaml
 
+from .navigation_config import JointPlanarBaseConfig, NavigationSensorsConfig, parse_navigation_config
+
 
 @dataclass(init=False)
 class JointConfig:
@@ -159,6 +161,10 @@ class MuJoCoNodeConfig:
     pose_targets: dict[str, str] = field(default_factory=dict)
     # 可选：通过 mocap body 消费 LocomotionCommand，按机体系速度做平面运动。
     kinematic_planar_base: KinematicPlanarBaseConfig | None = None
+
+    joint_planar_base: JointPlanarBaseConfig | None = None
+    navigation_sensors: NavigationSensorsConfig | None = None
+    state_recording_file: str | None = None
 
     renderer_backend: Literal["filament", "classic"] = "filament"
     filament_graphics_api: Literal["auto", "vulkan", "opengl"] = "auto"
@@ -398,6 +404,11 @@ class MuJoCoNodeConfig:
                 pose_targets[rk] = rv
         # pose_set 输出口固定为 "pose_set"
 
+        joint_base = parse_navigation_config(data.get("joint_planar_base"), JointPlanarBaseConfig)
+        sensors = parse_navigation_config(data.get("navigation_sensors"), NavigationSensorsConfig)
+        if joint_base is not None and kinematic_planar_base is not None:
+            raise ValueError("joint_planar_base and kinematic_planar_base are mutually exclusive")
+
         return cls(
             model_path=model_path,
             joints=joints,
@@ -412,6 +423,9 @@ class MuJoCoNodeConfig:
             filament_graphics_api=graphics_api,
             pose_targets=pose_targets,
             kinematic_planar_base=kinematic_planar_base,
+            joint_planar_base=joint_base,
+            navigation_sensors=sensors,
+            state_recording_file=data.get("state_recording_file"),
         )
 
     @classmethod

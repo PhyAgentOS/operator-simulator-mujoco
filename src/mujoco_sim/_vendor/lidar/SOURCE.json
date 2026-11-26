@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/discoverse-dev/MuJoCo-LiDAR",
+  "upstream_commit": "e6b879df4b96daaed30ef10fe02650d29048fa9b",
+  "license": "MIT",
+  "local_changes": "CPU ray function detects the optional MuJoCo normal argument; only the Mid360 pattern is distributed. Import paths use the private vendor package.",
+  "sha256": {
+    "mjlidar_cpu.py": "b1ec4d3ddcf0d82c744e41b697d9e534b86f7a93d5f0236d41c3721b613504a7",
+    "scan_gen.py": "053f643c265984817e978ed1c950c4c1647ab491e7b7408f2c344ccda6d5d046",
+    "scan_mode/mid360.npy": "9fa0165576f0060488254f04bd647a891004d4f4faa6e9b03b69d830c117c9a3",
+    "LICENSE": "4c49f527b703b3b34595cd7b2bb2e4517fae33ed40fe31bfeda465a25ff1586f"
+  }
+}

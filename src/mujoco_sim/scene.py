@@ -10,6 +10,7 @@ from forge_common import get_logger
 
 from .config import MuJoCoNodeConfig, RobotConfig
 from .locomotion import KinematicPlanarBase
+from .joint_base import JointPlanarBase
 from .simulator import ActuatorSpec, JointSpec, MuJoCoSimulator
 
 logger = get_logger(__name__)
@@ -200,8 +201,10 @@ def initialize_planar_base(
     model: mujoco.MjModel,
     data: mujoco.MjData,
     config: MuJoCoNodeConfig,
-) -> KinematicPlanarBase | None:
+) -> KinematicPlanarBase | JointPlanarBase | None:
     """Initialize the optional kinematic planar base."""
+    if config.joint_planar_base is not None:
+        return JointPlanarBase(model, data, config.joint_planar_base)
     planar_config = config.kinematic_planar_base
     if planar_config is None:
         return None
@@ -239,6 +242,8 @@ def reset_simulation_state(
     mujoco.mj_resetData(model, data)
     if planar_base is not None:
         planar_base.stop()
+        if isinstance(planar_base, JointPlanarBase):
+            planar_base.reset()
     joint_positions = config.initial_state.joint_positions
     applied_joint_names: set[str] = set()
 

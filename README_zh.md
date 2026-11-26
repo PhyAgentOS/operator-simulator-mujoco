@@ -258,3 +258,15 @@ gh workflow run release.yml --ref master -f release_line=2.x -f tag="$TAG"
 设置 `build_binaries=true` 复用已有 Ubuntu 20.04 二进制工作流，保留原架构、CLI 和归档校验。也可直接运行 `build-ubuntu20.yml`，传入 `ref`、`version`、`release_line`；`ref` 必须为 annotated 标签，不能为移动分支。仅在所有选定任务通过后附加二进制产物。
 
 源码归档保留标签中的文件；外部 SDK/submodule、模型下载与现场配置仍是独立前置条件。依赖或 SDK 构建失败不能视为发布验收通过。构建成功不代表单节点或串联 `dora run`、真机、真实模型、长稳态或回滚验收通过；每条验收链必须包含相同兼容线的 `adapter-forge-gateway`。Forge 2.x 属于 **breaking change**，整个部署的 Forge 库、节点版本与 Dora 必须对齐；1.x 保留在维护分支。
+
+## 可选导航仿真
+
+2.1.0 通过显式配置增加导航支持，未配置这些字段的机械臂 profile 保持原有行为。
+
+- `joint_planar_base` 指定机体、x/y 滑动关节及 yaw 转动关节。速度命令通过 MuJoCo 动力学中的广义力执行，障碍物产生真实接触；不能与 mocap `kinematic_planar_base` 同时启用。命令受仿真时钟过期机制与墙钟看门狗约束。`base_feedback` 返回实际速度和换算的差速轮速。
+- `navigation_sensors` 指定激光雷达 site、IMU site 及原生陀螺仪/加速度计。内置 Mid360 扫描模式按物理步逐批进行射线检测。`point_cloud` 使用 Forge `PointCloudBuffer`，包含米制 x/y/z、逐点 `time_offset_ns`、合成反射率以及表示传感器索引的 line/tag 字段，不模拟硬件反射率及发射电子学。`imu` 使用 Forge `Imu`，单位 rad/s、m/s²。
+- 传感器元数据包含 `capture_timestamp_ns`、`frame_id`、`clock_domain=simulation`、`time_mapping_id`、`ros_time_offset_ns=0`。`clock` 为 Arrow int64 纳秒仿真时间，在同一周期的传感器数据之前发送。重置场景会改变 `time_mapping_id`；下游定位和导航会话应重新启动，不能混用两个时间纪元。
+- 雷达忽略几何组 4（视觉贴片）和 5（碰撞代理），真实场景几何应放入组 0–3。可选辅助雷达必须刚性安装，回波按资产外参转换至主雷达坐标系。
+- `state_recording_file` 启用独占创建的 JSONL 文件，记录实际 qpos/qvel、mocap 状态、仿真时间和单调采集时间。有界异步写入队列拥塞时丢弃显示帧，不阻塞物理仿真。此流及可选接触评估仅供显示和验收，不作为导航真值输入。
+
+CPU 射线支持和扫描模式以私有模块形式包含在节点内，来自 MIT 许可的 MuJoCo-LiDAR。固定源提交、兼容改动和摘要见 `src/mujoco_sim/_vendor/lidar/SOURCE.json` 及 `LICENSE`，不安装旧 MuJoCo 3 包。运行 `pytest tests/test_navigation_simulation.py tests/test_contact_evaluation.py` 验证接触、看门狗、时间戳和传感器；这些测试不等于外部导航系统或真机验收。

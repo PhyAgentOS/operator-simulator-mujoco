@@ -50,6 +50,9 @@ for asset in ("pbr.filamat", "unlit_depth.filamat", "ibl.ktx"):
         raise SystemExit(f"Missing Filament asset in executable: {asset}")
 if not any(name.startswith("mujoco/studio/_studio.") for name in entries):
     raise SystemExit("Missing MuJoCo Studio native extension in executable")
+for asset in ("scan_mode/mid360.npy", "LICENSE", "SOURCE.json"):
+    if "mujoco_sim/_vendor/lidar/" + asset not in entries:
+        raise SystemExit(f"Missing navigation sensor asset in executable: {asset}")
 PYTHON
 
 EXPECTED_VERSION="$("${VENV_DIR}/bin/python" -c 'import importlib.metadata; print("mujoco-sim " + importlib.metadata.version("mujoco-sim"))')"

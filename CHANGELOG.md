@@ -8,6 +8,13 @@ The project follows Semantic Versioning. Dates use the `YYYY-MM-DD` format.
 
 No unreleased changes.
 
+## 2.1.0 - 2026-11-27
+
+- Add optional force-driven joint planar bases with native contact response, measured velocity feedback and a wall-clock command watchdog.
+- Add optional time-resolved Mid360-pattern ray scans, native IMU and simulation clock outputs for navigation. Include the MIT-licensed scan pattern and CPU support with provenance.
+- Support bounded asynchronous native-state recording for display and contact evaluation. Neither provides localization or planning inputs.
+- Keep arm profiles and Filament/classic camera contracts unchanged; use MuJoCo 4.0.1 for physics and rendering.
+
 ## 2.0.2 - 2026-11-24
 
 - Choose Filament (default) or classic rendering for RGB and optical-axis depth with `renderer_backend`. Camera topics and float32 depth units in metres are preserved.
