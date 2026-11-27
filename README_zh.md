@@ -224,7 +224,7 @@ uv run dora run dataflow.yaml
 
 ## Forge 2 / Dora 1 迁移
 
-目标版本：`2.0.2`，当前为待验收改动。首轮验证组合使用 Dora 1.0.1、Forge Msgs 2.1.0、Common 2.1.0；依赖与构建工具以提交的锁文件为准。原有消息规范继续使用 `forge_msgs.v1`。
+目标版本：`2.1.0`，当前为待验收改动。首轮验证组合使用 Dora 1.0.1、Forge Msgs 2.1.0、Common 2.1.0；依赖与构建工具以提交的锁文件为准。原有消息规范继续使用 `forge_msgs.v1`。
 
 本轮要求：检查所有示例最终 YAML，使用 `dora validate <dataflow.yaml>` 验证，并实际执行消息往返。相机取流、资源释放和异常退出须分别验收；高吞吐图像链预热后连续测试至少 4 小时，覆盖慢消费者、扇出、退出与重启，记录实际内存占用。无硬件单测不能替代设备验收。
 
@@ -258,3 +258,7 @@ gh workflow run release.yml --ref master -f release_line=2.x -f tag="$TAG"
 设置 `build_binaries=true` 复用已有 Ubuntu 20.04 二进制工作流，保留原架构、CLI 和归档校验。也可直接运行 `build-ubuntu20.yml`，传入 `ref`、`version`、`release_line`；`ref` 必须为 annotated 标签，不能为移动分支。仅在所有选定任务通过后附加二进制产物。
 
 源码归档保留标签中的文件；外部 SDK/submodule、模型下载与现场配置仍是独立前置条件。依赖或 SDK 构建失败不能视为发布验收通过。构建成功不代表单节点或串联 `dora run`、真机、真实模型、长稳态或回滚验收通过；每条验收链必须包含相同兼容线的 `adapter-forge-gateway`。Forge 2.x 属于 **breaking change**，整个部署的 Forge 库、节点版本与 Dora 必须对齐；1.x 保留在维护分支。
+
+## 可选传感器与观察输出
+
+新增能力均默认关闭，保留原命令、mocap、相机和状态行为。配置、消息格式、采样时间、重置以及速度命令超时规则见[可选仿真能力](docs/optional-sensors_zh.md)。机器人映射、传感器融合、录制和碰撞评价由消费者负责。

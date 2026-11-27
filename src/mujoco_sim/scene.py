@@ -192,6 +192,8 @@ def initialize_simulators(
             actuators=actuators,
             derived_state_cfg=derived_state_config,
             prefix=robot.prefix,
+            velocity_command_timeouts=config.velocity_command_timeouts.get(robot.id, {}),
+            joint_velocity_output=config.joint_velocity_output,
         )
     return simulators
 

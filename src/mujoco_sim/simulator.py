@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import math
+import time
 from dataclasses import dataclass, replace
 from typing import Any
 
 import mujoco
-
-from forge_msgs import JointCommand, JointState
 from forge_common import get_logger
+from forge_msgs import JointCommand, JointState
 
 logger = get_logger(__name__)
 
@@ -53,6 +54,8 @@ class MuJoCoSimulator:
         actuators: list[ActuatorSpec] | None = None,
         derived_state_cfg: dict[str, dict[str, Any]] | None = None,
         prefix: str = "",
+        velocity_command_timeouts: dict[str, float] | None = None,
+        joint_velocity_output: bool = False,
     ):
         self._model = model
         self._data = data
@@ -60,6 +63,9 @@ class MuJoCoSimulator:
         self._actuators = actuators or []
         self._joint_map = {j.name: j for j in self._joints}
         self._actuator_map = {a.name: a for a in self._actuators}
+        self._joint_velocity_output = joint_velocity_output
+        self._velocity_timeouts = velocity_command_timeouts or {}
+        self._command_times: dict[str, tuple[float, float]] = {}
 
         if prefix and not prefix.endswith("/"):
             prefix += "/"
@@ -69,6 +75,7 @@ class MuJoCoSimulator:
 
         self._qpos_addrs: dict[str, int] = {}
         self._joint_qpos_addrs: dict[str, int] = {}
+        self._qvel_addrs: dict[str, int] = {}
         self._ctrl_indices: dict[str, int] = {}
 
         for joint in self._joints:
@@ -79,6 +86,10 @@ class MuJoCoSimulator:
                 model, mujoco.mjtObj.mjOBJ_JOINT, prefixed_name
             )
             if joint_id >= 0:
+                if joint_velocity_output:
+                    if int(model.jnt_type[joint_id]) not in (int(mujoco.mjtJoint.mjJNT_HINGE), int(mujoco.mjtJoint.mjJNT_SLIDE)):
+                        raise ValueError("joint_velocity_output supports scalar joints only")
+                    self._qvel_addrs[logical_name] = int(model.jnt_dofadr[joint_id])
                 qpos_addr = model.jnt_qposadr[joint_id]
                 self._qpos_addrs[logical_name] = qpos_addr
                 self._joint_qpos_addrs[logical_name] = qpos_addr
@@ -139,6 +150,16 @@ class MuJoCoSimulator:
                     prefixed_name,
                 )
 
+        for name, timeout in self._velocity_timeouts.items():
+            spec = self._actuator_map.get(name)
+            if name not in self._ctrl_indices or spec is None or spec.control_mode != "velocity":
+                raise ValueError(f"timeout requires a mapped velocity actuator: {name}")
+            if isinstance(timeout, bool) or not math.isfinite(timeout) or timeout <= 0:
+                raise ValueError("velocity command timeout must be finite and positive")
+            if not spec.min_value <= 0 <= spec.max_value:
+                raise ValueError("watched velocity actuator must permit a zero target")
+        if joint_velocity_output and derived_state_cfg:
+            raise ValueError("joint_velocity_output requires direct joint mappings")
         self._derived_state_cfg: dict[str, dict[str, Any]] = {}
         if derived_state_cfg:
             for act_name, cfg in derived_state_cfg.items():
@@ -253,6 +274,7 @@ class MuJoCoSimulator:
 
     def sync_actuator_targets(self) -> None:
         """根据 forward 后的 actuator length 同步 position/velocity ctrl。"""
+        self._command_times.clear()
         for logical_name, actuator in self._actuator_map.items():
             ctrl_index = self._ctrl_indices.get(logical_name)
             if ctrl_index is None:
@@ -336,10 +358,33 @@ class MuJoCoSimulator:
             names.append(act_name)
             position.append(value)
 
-        return JointState(name=names, position=position, velocity=[], effort=[])
+        velocity = []
+        if self._joint_velocity_output:
+            for name in names:
+                value = float(self._data.qvel[self._qvel_addrs[name]])
+                spec = self._actuator_map.get(name)
+                if spec and spec.unit in ("millimeters", "millimeters/s"):
+                    value *= 1000.0
+                velocity.append(value)
+        return JointState(name=names, position=position, velocity=velocity, effort=[])
+
+    def expire_velocity_commands(self) -> None:
+        """Stop only explicitly watched actuators; unrelated commands cannot renew them."""
+        wall, simulation = time.monotonic(), float(self._data.time)
+        for name, timeout in self._velocity_timeouts.items():
+            last_sim, last_wall = self._command_times.get(name, (-math.inf, -math.inf))
+            if simulation - last_sim >= timeout or wall - last_wall >= timeout:
+                self._data.ctrl[self._ctrl_indices[name]] = 0.0
 
     def set_command(self, command: JointCommand) -> None:
         """下发 JointCommand（弧度/毫米），内部裁剪到限位后写入 ctrl。"""
+        if self._velocity_timeouts:
+            for index, name in enumerate(command.name):
+                if name in self._velocity_timeouts:
+                    values = command.velocity or command.position
+                    if values and (index >= len(values) or not math.isfinite(values[index])):
+                        self._data.ctrl[self._ctrl_indices[name]] = 0.0
+                        raise ValueError(f"non-finite watched velocity command: {name}")
         safe_command = self._get_safe_command(command)
         ctrl = self._data.ctrl
 
@@ -385,6 +430,8 @@ class MuJoCoSimulator:
             else:
                 # position(rad)、velocity(rad/s) 等与 MuJoCo 一致，直接赋值（如速度 1 -> ctrl=1）
                 ctrl[ctrl_index] = value
+            if logical_name in self._velocity_timeouts:
+                self._command_times[logical_name] = (float(self._data.time), time.monotonic())
 
     def _get_safe_command(self, command: JointCommand) -> JointCommand:
         """按执行器限位裁剪 command。"""

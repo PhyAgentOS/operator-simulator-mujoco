@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import math
 import sys
+import time
 from typing import Any
 
 import mujoco
+import pyarrow as pa
 from dora import Node
 from forge_common import get_logger
 from forge_msgs import JointCommand, JointState, LocomotionCommand, Pose, PoseSet
@@ -20,6 +22,8 @@ from .handlers import (
     robot_state_to_robot_command,
     sim_state_to_robot_state,
 )
+from .observations import contact_sample, state_snapshot
+from .sensors import Sensors
 
 logger = get_logger(__name__)
 
@@ -62,6 +66,7 @@ class MuJoCoNodeRuntime:
             self.planar_base,
         )
         self.pose_body_ids = scene.resolve_pose_body_ids(self.model, self.config)
+        self.sensors = Sensors(self.model, self.data, config.sensors) if any(config.sensors.values()) else None
 
         self.renderer = None
         if self.config.camera_outputs:
@@ -167,6 +172,8 @@ class MuJoCoNodeRuntime:
         self.current_step = 0
         self.episode_index += 1
         self.next_camera_time = rendering.initial_camera_times(self.config)
+        if self.sensors is not None:
+            self.sensors.reset()
         self._send_status()
         self.sim_mode = "RUNNING"
 
@@ -179,25 +186,54 @@ class MuJoCoNodeRuntime:
         self._send_state_output()
         self._send_pose_output()
         self._send_camera_outputs()
+        if self.config.state_output:
+            self.node.send_output("physics_state", json.dumps(
+                state_snapshot(self.model, self.data, self.episode_index), allow_nan=False).encode())
         self._send_status()
 
     def _step_physics(self) -> None:
         n_steps = max(1, round(self.control_period_sec / self.physics_dt))
+        sensor_outputs = []
+        contacts = []
         for _ in range(n_steps):
+            for simulator in self.simulators.values():
+                if self.config.velocity_command_timeouts:
+                    simulator.expire_velocity_commands()
             if self.planar_base is not None:
                 self.planar_base.advance(self.physics_dt, self.sim_time)
             mujoco.mj_step(self.model, self.data)
             self.sim_time += self.physics_dt
+            if self.sensors is not None or self.config.contact_output:
+                mujoco.mj_forward(self.model, self.data)
+            if self.sensors is not None:
+                sensor_outputs.extend(self.sensors.sample())
+            if self.config.contact_output:
+                contacts.append(contact_sample(self.data))
+        if self.sensors is not None:
+            self.node.send_output("clock", pa.array([round(float(self.data.time) * 1e9)], type=pa.int64()))
+            for output_id, payload, metadata in sensor_outputs:
+                self.node.send_output(output_id, payload, metadata)
+        if self.config.contact_output:
+            self.node.send_output("contacts", json.dumps({"schema_version": 1,
+                "episode": self.episode_index, "samples": contacts}, allow_nan=False).encode())
         self.current_step += n_steps
 
     def _send_state_output(self) -> None:
+        if not self.config.robots:
+            return
         robot_states: dict[str, JointState] = {}
         for robot in self.config.robots:
             simulator = self.simulators[robot.id]
             sim_state = simulator.get_state()
             robot_states[robot.id] = sim_state_to_robot_state(sim_state, robot)
         joint_state = build_joint_state(robot_states, self.config)
-        self.node.send_output("proprio_state", joint_state.to_arrow())
+        if self.config.joint_velocity_output:
+            self.node.send_output("proprio_state", joint_state.to_arrow(), {
+                "capture_timestamp_ns": round(float(self.data.time) * 1e9),
+                "capture_monotonic_ns": time.monotonic_ns(),
+                "episode_index": self.episode_index})
+        else:
+            self.node.send_output("proprio_state", joint_state.to_arrow())
 
     def _send_pose_output(self) -> None:
         if not self.pose_body_ids:

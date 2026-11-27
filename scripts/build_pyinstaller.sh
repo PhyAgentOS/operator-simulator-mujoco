@@ -45,6 +45,9 @@ import sys
 from PyInstaller.archive.readers import CArchiveReader
 
 entries = CArchiveReader(sys.argv[1]).toc
+for required in ("mujoco_sim/_vendor/lidar/scan_mode/mid360.npy", "mujoco_sim/_vendor/lidar/LICENSE"):
+    if required not in entries:
+        raise SystemExit(f"Missing sensor asset in executable: {required}")
 for asset in ("pbr.filamat", "unlit_depth.filamat", "ibl.ktx"):
     if "mujoco/studio/assets/" + asset not in entries:
         raise SystemExit(f"Missing Filament asset in executable: {asset}")
