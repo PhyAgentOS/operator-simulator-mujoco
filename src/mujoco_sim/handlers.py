@@ -60,23 +60,27 @@ def build_joint_state(
     """Aggregate per-robot actuator-keyed states into a global JointState."""
 
     positions: dict[str, float] = {}
+    velocities: dict[str, float] = {}
     for robot in config.robots:
         state = robot_states.get(robot.id)
         if not state:
             continue
 
         values = _values_by_name(state, "position")
+        speed_values = _values_by_name(state, "velocity")
         actuator_to_joint = {v: k for k, v in robot.joint_to_actuator.items()}
         for actuator_name, value in values.items():
             joint_name = actuator_to_joint.get(actuator_name)
             if joint_name is not None:
                 positions[joint_name] = value
+                if actuator_name in speed_values:
+                    velocities[joint_name] = speed_values[actuator_name]
 
     names = [name for name in config.joint_order if name in positions]
     return JointState(
         name=names,
         position=[positions[name] for name in names],
-        velocity=[],
+        velocity=[velocities[name] for name in names] if all(name in velocities for name in names) else [],
         effort=[],
     )
 
@@ -91,18 +95,25 @@ def sim_state_to_robot_state(
     actuator_to_joint = {v: k for k, v in robot.joint_to_actuator.items()}
     names: list[str] = []
     position: list[float] = []
+    speed_values = _values_by_name(sim_state, "velocity")
+    velocity: list[float] = []
 
     for actuator_name in robot.actuator_order:
         if actuator_name in values:
             names.append(actuator_name)
             position.append(values[actuator_name])
+            if actuator_name in speed_values:
+                velocity.append(speed_values[actuator_name])
             continue
         joint_name = actuator_to_joint.get(actuator_name)
         if joint_name is not None and joint_name in values:
             names.append(actuator_name)
             position.append(values[joint_name])
+            if joint_name in speed_values:
+                velocity.append(speed_values[joint_name])
 
-    return JointState(name=names, position=position, velocity=[], effort=[])
+    return JointState(name=names, position=position,
+                      velocity=velocity if len(velocity) == len(names) else [], effort=[])
 
 
 def robot_state_to_robot_command(

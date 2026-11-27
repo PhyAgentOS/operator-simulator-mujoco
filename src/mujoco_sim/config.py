@@ -10,6 +10,8 @@ from typing import Any, Literal
 
 import yaml
 
+from .sensors import parse_sensors
+
 
 @dataclass(init=False)
 class JointConfig:
@@ -159,6 +161,13 @@ class MuJoCoNodeConfig:
     pose_targets: dict[str, str] = field(default_factory=dict)
     # 可选：通过 mocap body 消费 LocomotionCommand，按机体系速度做平面运动。
     kinematic_planar_base: KinematicPlanarBaseConfig | None = None
+
+    sensors: dict = field(default_factory=lambda: {"imu": [], "lidar": []})
+    joint_velocity_output: bool = False
+    state_output: bool = False
+    contact_output: bool = False
+    # Robot ID -> logical velocity actuator -> expiry in seconds.
+    velocity_command_timeouts: dict[str, dict[str, float]] = field(default_factory=dict)
 
     renderer_backend: Literal["filament", "classic"] = "filament"
     filament_graphics_api: Literal["auto", "vulkan", "opengl"] = "auto"
@@ -398,6 +407,31 @@ class MuJoCoNodeConfig:
                 pose_targets[rk] = rv
         # pose_set 输出口固定为 "pose_set"
 
+        sensors = parse_sensors(data.get("sensors", {}))
+        new_outputs = {"clock"} if any(sensors.values()) else set()
+        if data.get("state_output", False):
+            new_outputs.add("physics_state")
+        if data.get("contact_output", False):
+            new_outputs.add("contacts")
+        if any(c.output_id in new_outputs for configs in image_forward.values() for c in configs):
+            raise ValueError("camera output collides with an enabled observation output")
+        reserved = {"clock", "proprio_state", "pose_set", "sim_status", "physics_state", "contacts"}
+        reserved.update(c.output_id for configs in image_forward.values() for c in configs)
+        if any(c.output in reserved for configs in sensors.values() for c in configs):
+            raise ValueError("sensor output collides with another node output")
+        for name in ("joint_velocity_output", "state_output", "contact_output"):
+            if type(data.get(name, False)) is not bool:
+                raise ValueError(f"{name} must be boolean")
+        timeouts = data.get("velocity_command_timeouts", {})
+        if not isinstance(timeouts, dict) or set(timeouts) - {r.id for r in robots}:
+            raise ValueError("velocity_command_timeouts must map configured robot IDs")
+        for values in timeouts.values():
+            if not isinstance(values, dict):
+                raise ValueError("velocity_command_timeouts must map actuator names to seconds")
+            for name, value in values.items():
+                if not isinstance(name, str) or isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+                    raise ValueError("velocity command timeouts must be finite and positive")
+
         return cls(
             model_path=model_path,
             joints=joints,
@@ -412,6 +446,11 @@ class MuJoCoNodeConfig:
             filament_graphics_api=graphics_api,
             pose_targets=pose_targets,
             kinematic_planar_base=kinematic_planar_base,
+            sensors=sensors,
+            joint_velocity_output=data.get("joint_velocity_output", False),
+            state_output=data.get("state_output", False),
+            contact_output=data.get("contact_output", False),
+            velocity_command_timeouts=timeouts,
         )
 
     @classmethod

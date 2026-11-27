@@ -6,7 +6,9 @@ The project follows Semantic Versioning. Dates use the `YYYY-MM-DD` format.
 
 ## Unreleased
 
-No unreleased changes.
+- Add independently configured native IMU and Mid360 ray scans with physics-step timestamps and reset epochs.
+- Add opt-in direct joint velocity feedback and per-actuator velocity-command expiry; preserve legacy defaults.
+- Expose optional state and per-step contact observations without recording or task-specific collision rules.
 
 ## 2.0.2 - 2026-11-24
 

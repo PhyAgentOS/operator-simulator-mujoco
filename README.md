@@ -16,7 +16,7 @@ A standalone Forge simulator with joint/locomotion commands, state/pose outputs 
 
 ## Migration status
 
-Target node version: **2.0.2**. These changes are candidates pending the platform,
+Target node version: **2.1.0**. These changes are candidates pending the platform,
 hardware and sustained-stream acceptance gates below. A version declaration does not
 mean a stable release has been accepted.
 
@@ -56,6 +56,14 @@ stream profiles before starting. This command requires an appropriate Dora dataf
 ## Message contract
 
 Inputs include tick, action or action/<source>, locomotion_command and sim_command. Outputs include proprio_state, optional pose_set, sim_status and configured camera outputs.
+
+### Optional sensors and observations
+
+All additions are opt-in. Existing profiles retain their command, mocap, camera
+and state behavior. [Optional capabilities](docs/optional-sensors.md) documents
+configuration, output schemas, timing, reset and velocity-command expiry.
+IMU/LiDAR acquisition runs in the same physics instance; robot control mappings,
+sensor fusion, recording and collision evaluation remain consumer responsibilities.
 
 Keep bounded queues for high-rate image consumers and document whether old images
 are dropped or producers experience backpressure. Preserve image dimensions, dtype,
