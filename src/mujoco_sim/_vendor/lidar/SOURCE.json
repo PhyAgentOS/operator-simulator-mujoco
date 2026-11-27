@@ -2,11 +2,11 @@
   "repository": "https://github.com/discoverse-dev/MuJoCo-LiDAR",
   "upstream_commit": "e6b879df4b96daaed30ef10fe02650d29048fa9b",
   "license": "MIT",
-  "local_changes": "CPU ray function detects the optional MuJoCo normal argument. Only the Mid360 generator and pattern are retained; unused sensor modes and helpers are excluded. Import paths use the private vendor package.",
+  "local_changes": "CPU ray function detects the optional MuJoCo normal argument. Only the Mid360 generator and pattern are retained; unused sensor modes and helpers are excluded. Import paths use the private vendor package. License and generator trailing blank lines are normalized without changing their content.",
   "sha256": {
     "mjlidar_cpu.py": "b1ec4d3ddcf0d82c744e41b697d9e534b86f7a93d5f0236d41c3721b613504a7",
-    "scan_gen.py": "a083b1cdb6a53b10ae0dbafdca36650271af4ed7b5bf4fcd79105740b773a13f",
+    "scan_gen.py": "e9b6c542f5a07bab44b584395ae73b86190d31ca131aaf733b022336bd210436",
     "scan_mode/mid360.npy": "9fa0165576f0060488254f04bd647a891004d4f4faa6e9b03b69d830c117c9a3",
-    "LICENSE": "4c49f527b703b3b34595cd7b2bb2e4517fae33ed40fe31bfeda465a25ff1586f"
+    "LICENSE": "1ea6b7eb8deddd0e2b175d7e6b8f16a667b7065c4bce2e16d04014ac3aef0bff"
   }
 }

@@ -28,4 +28,3 @@ class LivoxGenerator:
         if downsample > 1:
             self.ray_out = self.ray_out[::downsample]
         return self.ray_out[:, 0], self.ray_out[:, 1]
-
